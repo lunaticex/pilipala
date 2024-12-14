@@ -1,17 +1,21 @@
+import 'dart:convert';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:hive/hive.dart';
-import 'package:pilipala/common/constants.dart';
-import 'package:pilipala/http/index.dart';
-import 'package:pilipala/models/dynamics/result.dart';
-import 'package:pilipala/models/follow/result.dart';
-import 'package:pilipala/models/member/archive.dart';
-import 'package:pilipala/models/member/coin.dart';
-import 'package:pilipala/models/member/info.dart';
-import 'package:pilipala/models/member/seasons.dart';
-import 'package:pilipala/models/member/tags.dart';
-import 'package:pilipala/utils/storage.dart';
-import 'package:pilipala/utils/utils.dart';
-import 'package:pilipala/utils/wbi_sign.dart';
+import 'package:html/parser.dart';
+import 'package:pilipala/models/member/article.dart';
+import 'package:pilipala/models/member/like.dart';
+import '../common/constants.dart';
+import '../models/dynamics/result.dart';
+import '../models/follow/result.dart';
+import '../models/member/archive.dart';
+import '../models/member/coin.dart';
+import '../models/member/info.dart';
+import '../models/member/seasons.dart';
+import '../models/member/tags.dart';
+import '../utils/storage.dart';
+import '../utils/utils.dart';
+import '../utils/wbi_sign.dart';
+import 'index.dart';
 
 class MemberHttp {
   static Future memberInfo({
@@ -79,6 +83,8 @@ class MemberHttp {
     String order = 'pubdate',
     bool orderAvoided = true,
   }) async {
+    String dmImgStr = Utils.base64EncodeRandomString(16, 64);
+    String dmCoverImgStr = Utils.base64EncodeRandomString(32, 128);
     Map params = await WbiSign().makSign({
       'mid': mid,
       'ps': ps,
@@ -88,8 +94,19 @@ class MemberHttp {
       'order': order,
       'platform': 'web',
       'web_location': 1550101,
-      'order_avoided': orderAvoided
+      'order_avoided': orderAvoided,
+      'dm_img_list': '[]',
+      'dm_img_str': dmImgStr.substring(0, dmImgStr.length - 2),
+      'dm_cover_img_str': dmCoverImgStr.substring(0, dmCoverImgStr.length - 2),
+      'dm_img_inter': '{"ds":[],"wh":[0,0,0],"of":[0,0,0]}',
+      ...order == 'charge'
+          ? {
+              'order': 'pubdate',
+              'special_type': 'charging',
+            }
+          : {}
     });
+
     var res = await Request().get(
       Api.memberArchive,
       data: params,
@@ -101,10 +118,13 @@ class MemberHttp {
         'data': MemberArchiveDataModel.fromJson(res.data['data'])
       };
     } else {
+      Map errMap = {
+        -352: '风控校验失败，请检查登录状态',
+      };
       return {
         'status': false,
         'data': [],
-        'msg': res.data['message'],
+        'msg': errMap[res.data['code']] ?? res.data['message'],
       };
     }
   }
@@ -123,10 +143,13 @@ class MemberHttp {
         'data': DynamicsDataModel.fromJson(res.data['data']),
       };
     } else {
+      Map errMap = {
+        -352: '风控校验失败，请检查登录状态',
+      };
       return {
         'status': false,
         'data': [],
-        'msg': res.data['message'],
+        'msg': errMap[res.data['code']] ?? res.data['message'],
       };
     }
   }
@@ -175,13 +198,15 @@ class MemberHttp {
 
   // 设置分组
   static Future addUsers(int? fids, String? tagids) async {
-    var res = await Request().post(Api.addUsers, queryParameters: {
-      'fids': fids,
-      'tagids': tagids ?? '0',
-      'csrf': await Request.getCsrf(),
-    }, data: {
-      'cross_domain': true
-    });
+    var res = await Request().post(
+      Api.addUsers,
+      data: {
+        'fids': fids,
+        'tagids': tagids ?? '0',
+        'csrf': await Request.getCsrf(),
+      },
+      queryParameters: {'cross_domain': true},
+    );
     if (res.data['code'] == 0) {
       return {'status': true, 'data': [], 'msg': '操作成功'};
     } else {
@@ -316,7 +341,9 @@ class MemberHttp {
     if (res.data['code'] == 0) {
       return {
         'status': true,
-        'data': MemberSeasonsDataModel.fromJson(res.data['data']['items_lists'])
+        'data': res.data['data']['list']
+            .map<MemberLikeDataModel>((e) => MemberLikeDataModel.fromJson(e))
+            .toList(),
       };
     } else {
       return {
@@ -397,11 +424,14 @@ class MemberHttp {
   static Future cookieToKey() async {
     var authCodeRes = await getTVCode();
     if (authCodeRes['status']) {
-      var res = await Request().post(Api.cookieToKey, queryParameters: {
-        'auth_code': authCodeRes['data'],
-        'build': 708200,
-        'csrf': await Request.getCsrf(),
-      });
+      var res = await Request().post(
+        Api.cookieToKey,
+        data: {
+          'auth_code': authCodeRes['data'],
+          'build': 708200,
+          'csrf': await Request.getCsrf(),
+        },
+      );
       await Future.delayed(const Duration(milliseconds: 300));
       await qrcodePoll(authCodeRes['data']);
       if (res.data['code'] == 0) {
@@ -458,6 +488,135 @@ class MemberHttp {
         'status': false,
         'data': [],
         'msg': res.data['message'],
+      };
+    }
+  }
+
+  // 搜索follow
+  static Future getfollowSearch({
+    required int mid,
+    required int ps,
+    required int pn,
+    required String name,
+  }) async {
+    Map<String, dynamic> data = {
+      'vmid': mid,
+      'pn': pn,
+      'ps': ps,
+      'order': 'desc',
+      'order_type': 'attention',
+      'gaia_source': 'main_web',
+      'name': name,
+      'web_location': 333.999,
+    };
+    Map params = await WbiSign().makSign(data);
+    var res = await Request().get(Api.followSearch, data: {
+      ...data,
+      'w_rid': params['w_rid'],
+      'wts': params['wts'],
+    });
+    if (res.data['code'] == 0) {
+      return {
+        'status': true,
+        'data': FollowDataModel.fromJson(res.data['data'])
+      };
+    } else {
+      return {
+        'status': false,
+        'data': [],
+        'msg': res.data['message'],
+      };
+    }
+  }
+
+  static Future getSeriesDetail({
+    required int mid,
+    required int currentMid,
+    required int seriesId,
+    required int pn,
+  }) async {
+    var res = await Request().get(
+      Api.getSeriesDetailApi,
+      data: {
+        'mid': mid,
+        'series_id': seriesId,
+        'only_normal': true,
+        'sort': 'desc',
+        'pn': pn,
+        'ps': 30,
+        'current_mid': currentMid,
+      },
+    );
+    if (res.data['code'] == 0) {
+      try {
+        return {
+          'status': true,
+          'data': MemberSeasonsDataModel.fromJson(res.data['data'])
+        };
+      } catch (err) {
+        print(err);
+      }
+    } else {
+      return {
+        'status': false,
+        'data': [],
+        'msg': res.data['message'],
+      };
+    }
+  }
+
+  static Future getWWebid({required int mid}) async {
+    var res = await Request().get('https://space.bilibili.com/$mid/article');
+    String? headContent = parse(res.data).head?.outerHtml;
+    final regex = RegExp(
+        r'<script id="__RENDER_DATA__" type="application/json">(.*?)</script>');
+    if (headContent != null) {
+      final match = regex.firstMatch(headContent);
+      if (match != null && match.groupCount >= 1) {
+        final content = match.group(1);
+        String decodedString = Uri.decodeComponent(content!);
+        Map<String, dynamic> map = jsonDecode(decodedString);
+        return {'status': true, 'data': map['access_id']};
+      } else {
+        return {'status': false, 'data': '请检查登录状态'};
+      }
+    }
+    return {'status': false, 'data': '请检查登录状态'};
+  }
+
+  // 获取用户专栏
+  static Future getMemberArticle({
+    required int mid,
+    required int pn,
+    required String wWebid,
+    String? offset,
+  }) async {
+    Map params = await WbiSign().makSign({
+      'host_mid': mid,
+      'page': pn,
+      'offset': offset,
+      'web_location': 333.999,
+      'w_webid': wWebid,
+    });
+    var res = await Request().get(Api.opusList, data: {
+      'host_mid': mid,
+      'page': pn,
+      'offset': offset,
+      'web_location': 333.999,
+      'w_webid': wWebid,
+      'w_rid': params['w_rid'],
+      'wts': params['wts'],
+    });
+    if (res.data['code'] == 0) {
+      return {
+        'status': true,
+        'data': MemberArticleDataModel.fromJson(res.data['data'])
+      };
+    } else {
+      return {
+        'status': false,
+        'data': [],
+        'msg': res.data['message'] ?? '请求异常',
       };
     }
   }

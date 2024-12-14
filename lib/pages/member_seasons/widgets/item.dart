@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:get/get.dart';
 import 'package:pilipala/common/constants.dart';
 import 'package:pilipala/common/widgets/badge.dart';
 import 'package:pilipala/common/widgets/network_img_layer.dart';
 import 'package:pilipala/common/widgets/stat/view.dart';
 import 'package:pilipala/http/search.dart';
+import 'package:pilipala/utils/image_save.dart';
 import 'package:pilipala/utils/utils.dart';
 
 class MemberSeasonsItem extends StatelessWidget {
@@ -29,6 +31,11 @@ class MemberSeasonsItem extends StatelessWidget {
           Get.toNamed('/video?bvid=${seasonItem.bvid}&cid=$cid',
               arguments: {'videoItem': seasonItem, 'heroTag': heroTag});
         },
+        onLongPress: () => imageSaveDialog(
+          context,
+          seasonItem,
+          SmartDialog.dismiss,
+        ),
         child: Column(
           children: [
             AspectRatio(
@@ -46,7 +53,7 @@ class MemberSeasonsItem extends StatelessWidget {
                         height: maxHeight,
                       ),
                     ),
-                    if (seasonItem.duration != null)
+                    if (seasonItem.pubdate != null)
                       PBadge(
                         bottom: 6,
                         right: 6,
@@ -71,14 +78,11 @@ class MemberSeasonsItem extends StatelessWidget {
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      StatView(
-                        view: seasonItem.view,
-                        theme: 'gray',
-                      ),
+                      StatView(view: seasonItem.view),
                       const Spacer(),
                       Text(
                         Utils.CustomStamp_str(
-                            timestamp: seasonItem.pubdate, date: 'MM-DD'),
+                            timestamp: seasonItem.pubdate, date: 'YY-MM-DD'),
                         style: TextStyle(
                           fontSize: 11,
                           color: Theme.of(context).colorScheme.outline,

@@ -8,25 +8,37 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:get/get.dart';
 import 'package:hive/hive.dart';
 import 'package:ns_danmaku/ns_danmaku.dart';
+import 'package:pilipala/http/user.dart';
 import 'package:pilipala/models/video/play/quality.dart';
 import 'package:pilipala/models/video/play/url.dart';
+import 'package:pilipala/pages/dlna/index.dart';
 import 'package:pilipala/pages/video/detail/index.dart';
 import 'package:pilipala/pages/video/detail/introduction/widgets/menu_row.dart';
 import 'package:pilipala/plugin/pl_player/index.dart';
 import 'package:pilipala/plugin/pl_player/models/play_repeat.dart';
 import 'package:pilipala/utils/storage.dart';
-import 'package:pilipala/http/danmaku.dart';
+import 'package:pilipala/services/shutdown_timer_service.dart';
+import '../../../../http/danmaku.dart';
+import '../../../../models/common/search_type.dart';
+import '../../../../models/video_detail_res.dart';
+import '../introduction/index.dart';
 
 class HeaderControl extends StatefulWidget implements PreferredSizeWidget {
-  final PlPlayerController? controller;
-  final VideoDetailController? videoDetailCtr;
-  final Floating? floating;
   const HeaderControl({
     this.controller,
     this.videoDetailCtr,
     this.floating,
-    Key? key,
-  }) : super(key: key);
+    this.bvid,
+    this.videoType,
+    this.showSubtitleBtn,
+    super.key,
+  });
+  final PlPlayerController? controller;
+  final VideoDetailController? videoDetailCtr;
+  final Floating? floating;
+  final String? bvid;
+  final SearchType? videoType;
+  final bool? showSubtitleBtn;
 
   @override
   State<HeaderControl> createState() => _HeaderControlState();
@@ -37,20 +49,38 @@ class HeaderControl extends StatefulWidget implements PreferredSizeWidget {
 
 class _HeaderControlState extends State<HeaderControl> {
   late PlayUrlModel videoInfo;
-  List<PlaySpeed> playSpeed = PlaySpeed.values;
-  TextStyle subTitleStyle = const TextStyle(fontSize: 12);
-  TextStyle titleStyle = const TextStyle(fontSize: 14);
+  static const TextStyle subTitleStyle = TextStyle(fontSize: 12);
+  static const TextStyle titleStyle = TextStyle(fontSize: 14);
   Size get preferredSize => const Size(double.infinity, kToolbarHeight);
-  Box localCache = GStrorage.localCache;
-  Box videoStorage = GStrorage.video;
-  late List speedsList;
+  final Box<dynamic> localCache = GStrorage.localCache;
+  final Box<dynamic> videoStorage = GStrorage.video;
+  late List<double> speedsList;
   double buttonSpace = 8;
+  RxBool isFullScreen = false.obs;
+  late String heroTag;
+  late VideoIntroController videoIntroController;
+  late VideoDetailData videoDetail;
 
   @override
   void initState() {
     super.initState();
     videoInfo = widget.videoDetailCtr!.data;
     speedsList = widget.controller!.speedsList;
+    fullScreenStatusListener();
+    heroTag = Get.arguments['heroTag'];
+    videoIntroController =
+        Get.put(VideoIntroController(bvid: widget.bvid!), tag: heroTag);
+  }
+
+  void fullScreenStatusListener() {
+    widget.videoDetailCtr!.plPlayerController.isFullScreen.listen((bool val) {
+      isFullScreen.value = val;
+
+      /// TODO setState() called after dispose()
+      if (mounted) {
+        setState(() {});
+      }
+    });
   }
 
   /// 设置面板
@@ -62,15 +92,15 @@ class _HeaderControlState extends State<HeaderControl> {
       builder: (_) {
         return Container(
           width: double.infinity,
-          height: 440,
+          height: 460,
           clipBehavior: Clip.hardEdge,
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.background,
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: const BorderRadius.all(Radius.circular(12)),
           ),
           margin: const EdgeInsets.all(12),
           child: Column(
-            children: [
+            children: <Widget>[
               SizedBox(
                 height: 35,
                 child: Center(
@@ -91,46 +121,53 @@ class _HeaderControlState extends State<HeaderControl> {
                   child: Material(
                 child: ListView(
                   children: [
-                    ListTile(
-                      onTap: () {},
-                      dense: true,
-                      enabled: false,
-                      leading:
-                          const Icon(Icons.network_cell_outlined, size: 20),
-                      title: Text('省流模式', style: titleStyle),
-                      subtitle: Text('低画质 ｜ 减少视频缓存', style: subTitleStyle),
-                      trailing: Transform.scale(
-                        scale: 0.75,
-                        child: Switch(
-                          thumbIcon: MaterialStateProperty.resolveWith<Icon?>(
-                              (Set<MaterialState> states) {
-                            if (states.isNotEmpty &&
-                                states.first == MaterialState.selected) {
-                              return const Icon(Icons.done);
-                            }
-                            return null; // All other states will use the default thumbIcon.
-                          }),
-                          value: false,
-                          onChanged: (value) => {},
-                        ),
-                      ),
-                    ),
-                    // Obx(
-                    //   () => ListTile(
-                    //     onTap: () => {Get.back(), showSetSpeedSheet()},
-                    //     dense: true,
-                    //     leading: const Icon(Icons.speed_outlined, size: 20),
-                    //     title: Text('播放速度', style: titleStyle),
-                    //     subtitle: Text(
-                    //         '当前倍速 x${widget.controller!.playbackSpeed}',
-                    //         style: subTitleStyle),
+                    // ListTile(
+                    //   onTap: () {},
+                    //   dense: true,
+                    //   enabled: false,
+                    //   leading:
+                    //       const Icon(Icons.network_cell_outlined, size: 20),
+                    //   title: Text('省流模式', style: titleStyle),
+                    //   subtitle: Text('低画质 ｜ 减少视频缓存', style: subTitleStyle),
+                    //   trailing: Transform.scale(
+                    //     scale: 0.75,
+                    //     child: Switch(
+                    //       thumbIcon: MaterialStateProperty.resolveWith<Icon?>(
+                    //           (Set<MaterialState> states) {
+                    //         if (states.isNotEmpty &&
+                    //             states.first == MaterialState.selected) {
+                    //           return const Icon(Icons.done);
+                    //         }
+                    //         return null; // All other states will use the default thumbIcon.
+                    //       }),
+                    //       value: false,
+                    //       onChanged: (value) => {},
+                    //     ),
                     //   ),
                     // ),
+                    ListTile(
+                      onTap: () async {
+                        final res = await UserHttp.toViewLater(
+                            bvid: widget.videoDetailCtr!.bvid);
+                        SmartDialog.showToast(res['msg']);
+                        Get.back();
+                      },
+                      dense: true,
+                      leading: const Icon(Icons.watch_later_outlined, size: 20),
+                      title: const Text('添加至「稍后再看」', style: titleStyle),
+                    ),
+                    ListTile(
+                      onTap: () => {Get.back(), scheduleExit()},
+                      dense: true,
+                      leading:
+                          const Icon(Icons.hourglass_top_outlined, size: 20),
+                      title: const Text('定时关闭', style: titleStyle),
+                    ),
                     ListTile(
                       onTap: () => {Get.back(), showSetVideoQa()},
                       dense: true,
                       leading: const Icon(Icons.play_circle_outline, size: 20),
-                      title: Text('选择画质', style: titleStyle),
+                      title: const Text('选择画质', style: titleStyle),
                       subtitle: Text(
                           '当前画质 ${widget.videoDetailCtr!.currentVideoQa.description}',
                           style: subTitleStyle),
@@ -140,25 +177,26 @@ class _HeaderControlState extends State<HeaderControl> {
                         onTap: () => {Get.back(), showSetAudioQa()},
                         dense: true,
                         leading: const Icon(Icons.album_outlined, size: 20),
-                        title: Text('选择音质', style: titleStyle),
+                        title: const Text('选择音质', style: titleStyle),
                         subtitle: Text(
                             '当前音质 ${widget.videoDetailCtr!.currentAudioQa!.description}',
                             style: subTitleStyle),
                       ),
-                    ListTile(
-                      onTap: () => {Get.back(), showSetDecodeFormats()},
-                      dense: true,
-                      leading: const Icon(Icons.av_timer_outlined, size: 20),
-                      title: Text('解码格式', style: titleStyle),
-                      subtitle: Text(
-                          '当前解码格式 ${widget.videoDetailCtr!.currentDecodeFormats.description}',
-                          style: subTitleStyle),
-                    ),
+                    if (widget.videoDetailCtr!.currentDecodeFormats != null)
+                      ListTile(
+                        onTap: () => {Get.back(), showSetDecodeFormats()},
+                        dense: true,
+                        leading: const Icon(Icons.av_timer_outlined, size: 20),
+                        title: const Text('解码格式', style: titleStyle),
+                        subtitle: Text(
+                            '当前解码格式 ${widget.videoDetailCtr!.currentDecodeFormats!.description}',
+                            style: subTitleStyle),
+                      ),
                     ListTile(
                       onTap: () => {Get.back(), showSetRepeat()},
                       dense: true,
                       leading: const Icon(Icons.repeat, size: 20),
-                      title: Text('播放顺序', style: titleStyle),
+                      title: const Text('播放顺序', style: titleStyle),
                       subtitle: Text(widget.controller!.playRepeat.description,
                           style: subTitleStyle),
                     ),
@@ -166,7 +204,7 @@ class _HeaderControlState extends State<HeaderControl> {
                       onTap: () => {Get.back(), showSetDanmaku()},
                       dense: true,
                       leading: const Icon(Icons.subtitles_outlined, size: 20),
-                      title: Text('弹幕设置', style: titleStyle),
+                      title: const Text('弹幕设置', style: titleStyle),
                     ),
                   ],
                 ),
@@ -186,11 +224,12 @@ class _HeaderControlState extends State<HeaderControl> {
     bool isSending = false; // 追踪是否正在发送
     showDialog(
       context: Get.context!,
-      builder: (context) {
+      builder: (BuildContext context) {
         // TODO: 支持更多类型和颜色的弹幕
         return AlertDialog(
           title: const Text('发送弹幕（测试）'),
-          content: StatefulBuilder(builder: (context, StateSetter setState) {
+          content: StatefulBuilder(
+              builder: (BuildContext context, StateSetter setState) {
             return TextField(
               controller: textController,
             );
@@ -203,12 +242,13 @@ class _HeaderControlState extends State<HeaderControl> {
                 style: TextStyle(color: Theme.of(context).colorScheme.outline),
               ),
             ),
-            StatefulBuilder(builder: (context, StateSetter setState) {
+            StatefulBuilder(
+                builder: (BuildContext context, StateSetter setState) {
               return TextButton(
                 onPressed: isSending
                     ? null
                     : () async {
-                        String msg = textController.text;
+                        final String msg = textController.text;
                         if (msg.isEmpty) {
                           SmartDialog.showToast('弹幕内容不能为空');
                           return;
@@ -220,11 +260,10 @@ class _HeaderControlState extends State<HeaderControl> {
                           isSending = true; // 开始发送，更新状态
                         });
                         //修改按钮文字
-                        // SmartDialog.showToast('弹幕发送中,\n$msg');
-                        dynamic res = await DanmakaHttp.shootDanmaku(
-                          oid: widget.videoDetailCtr!.cid!.value,
+                        final dynamic res = await DanmakaHttp.shootDanmaku(
+                          oid: widget.videoDetailCtr!.cid.value,
                           msg: textController.text,
-                          bvid: widget.videoDetailCtr!.bvid!,
+                          bvid: widget.videoDetailCtr!.bvid,
                           progress:
                               widget.controller!.position.value.inMilliseconds,
                           type: 1,
@@ -240,8 +279,10 @@ class _HeaderControlState extends State<HeaderControl> {
                             DanmakuItem(
                               msg,
                               color: Colors.white,
-                              time: widget.controller!.position.value.inMilliseconds,
+                              time: widget
+                                  .controller!.position.value.inMilliseconds,
                               type: DanmakuItemType.scroll,
+                              isSend: true,
                             )
                           ]);
                           Get.back();
@@ -258,22 +299,208 @@ class _HeaderControlState extends State<HeaderControl> {
     );
   }
 
+  /// 定时关闭
+  void scheduleExit() async {
+    const List<int> scheduleTimeChoices = [
+      -1,
+      15,
+      30,
+      60,
+    ];
+    showModalBottomSheet(
+      context: context,
+      elevation: 0,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+            builder: (BuildContext context, StateSetter setState) {
+          return Container(
+            width: double.infinity,
+            height: 500,
+            clipBehavior: Clip.hardEdge,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: const BorderRadius.all(Radius.circular(12)),
+            ),
+            margin: const EdgeInsets.all(12),
+            padding: const EdgeInsets.only(left: 14, right: 14),
+            child: SingleChildScrollView(
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(vertical: 0, horizontal: 20),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      const SizedBox(height: 30),
+                      const Center(child: Text('定时关闭', style: titleStyle)),
+                      const SizedBox(height: 10),
+                      for (final int choice in scheduleTimeChoices) ...<Widget>[
+                        ListTile(
+                          onTap: () {
+                            shutdownTimerService.scheduledExitInMinutes =
+                                choice;
+                            shutdownTimerService.startShutdownTimer();
+                            Get.back();
+                          },
+                          contentPadding: const EdgeInsets.only(),
+                          dense: true,
+                          title: Text(choice == -1 ? "禁用" : "$choice分钟后"),
+                          trailing: shutdownTimerService
+                                      .scheduledExitInMinutes ==
+                                  choice
+                              ? Icon(
+                                  Icons.done,
+                                  color: Theme.of(context).colorScheme.primary,
+                                )
+                              : const SizedBox(),
+                        )
+                      ],
+                      const SizedBox(height: 6),
+                      const Center(
+                          child: SizedBox(
+                        width: 100,
+                        child: Divider(height: 1),
+                      )),
+                      const SizedBox(height: 10),
+                      ListTile(
+                        onTap: () {
+                          shutdownTimerService.waitForPlayingCompleted =
+                              !shutdownTimerService.waitForPlayingCompleted;
+                          setState(() {});
+                        },
+                        dense: true,
+                        contentPadding: const EdgeInsets.only(),
+                        title: const Text("额外等待视频播放完毕", style: titleStyle),
+                        trailing: Switch(
+                          // thumb color (round icon)
+                          activeColor: Theme.of(context).colorScheme.primary,
+                          activeTrackColor:
+                              Theme.of(context).colorScheme.primaryContainer,
+                          inactiveThumbColor:
+                              Theme.of(context).colorScheme.primaryContainer,
+                          inactiveTrackColor:
+                              Theme.of(context).colorScheme.surface,
+                          splashRadius: 10.0,
+                          // boolean variable value
+                          value: shutdownTimerService.waitForPlayingCompleted,
+                          // changes the state of the switch
+                          onChanged: (value) => setState(() =>
+                              shutdownTimerService.waitForPlayingCompleted =
+                                  value),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: <Widget>[
+                          const Text('倒计时结束:', style: titleStyle),
+                          const Spacer(),
+                          ActionRowLineItem(
+                            onTap: () {
+                              shutdownTimerService.exitApp = false;
+                              setState(() {});
+                              // Get.back();
+                            },
+                            text: " 暂停视频 ",
+                            selectStatus: !shutdownTimerService.exitApp,
+                          ),
+                          const Spacer(),
+                          // const SizedBox(width: 10),
+                          ActionRowLineItem(
+                            onTap: () {
+                              shutdownTimerService.exitApp = true;
+                              setState(() {});
+                              // Get.back();
+                            },
+                            text: " 退出APP ",
+                            selectStatus: shutdownTimerService.exitApp,
+                          )
+                        ],
+                      ),
+                    ]),
+              ),
+            ),
+          );
+        });
+      },
+    );
+  }
+
+  /// 选择字幕
+  void showSubtitleDialog() async {
+    int tempThemeValue = widget.controller!.subTitleCode.value;
+    final List subtitles = widget.videoDetailCtr!.subtitles;
+    int len = subtitles.length;
+    if (subtitles.firstWhereOrNull((element) => element.id == tempThemeValue) ==
+        null) {
+      tempThemeValue = -1;
+    }
+    showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('选择字幕'),
+            contentPadding: const EdgeInsets.fromLTRB(0, 12, 0, 18),
+            content: StatefulBuilder(
+              builder: (context, StateSetter setState) {
+                return len == 0
+                    ? const SizedBox(
+                        height: 60,
+                        child: Center(
+                          child: Text('没有字幕'),
+                        ),
+                      )
+                    : SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            RadioListTile(
+                              value: -1,
+                              title: const Text('关闭字幕'),
+                              groupValue: tempThemeValue,
+                              onChanged: (value) {
+                                tempThemeValue = value!;
+                                widget.controller?.toggleSubtitle(value);
+                                Get.back();
+                              },
+                            ),
+                            ...widget.videoDetailCtr!.subtitles
+                                .map((e) => RadioListTile(
+                                      value: e.id,
+                                      title: Text(e.title),
+                                      groupValue: tempThemeValue,
+                                      onChanged: (value) {
+                                        tempThemeValue = value!;
+                                        widget.controller
+                                            ?.toggleSubtitle(value);
+                                        Get.back();
+                                      },
+                                    ))
+                                .toList(),
+                          ],
+                        ),
+                      );
+              },
+            ),
+          );
+        });
+  }
+
   /// 选择倍速
   void showSetSpeedSheet() {
-    double currentSpeed = widget.controller!.playbackSpeed;
+    final double currentSpeed = widget.controller!.playbackSpeed;
     showDialog(
       context: Get.context!,
-      builder: (context) {
+      builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('播放速度'),
-          content: StatefulBuilder(builder: (context, StateSetter setState) {
+          content: StatefulBuilder(
+              builder: (BuildContext context, StateSetter setState) {
             return Wrap(
-              alignment: WrapAlignment.start,
               spacing: 8,
               runSpacing: 2,
               children: [
-                for (var i in speedsList) ...[
-                  if (i == currentSpeed) ...[
+                for (final double i in speedsList) ...<Widget>[
+                  if (i == currentSpeed) ...<Widget>[
                     FilledButton(
                       onPressed: () async {
                         // setState(() => currentSpeed = i),
@@ -296,9 +523,9 @@ class _HeaderControlState extends State<HeaderControl> {
               ],
             );
           }),
-          actions: [
+          actions: <Widget>[
             TextButton(
-              onPressed: () => SmartDialog.dismiss(),
+              onPressed: () => Get.back(),
               child: Text(
                 '取消',
                 style: TextStyle(color: Theme.of(context).colorScheme.outline),
@@ -319,22 +546,30 @@ class _HeaderControlState extends State<HeaderControl> {
 
   /// 选择画质
   void showSetVideoQa() {
-    List<FormatItem> videoFormat = videoInfo.supportFormats!;
-    VideoQuality currentVideoQa = widget.videoDetailCtr!.currentVideoQa;
+    final List<FormatItem> videoFormat = videoInfo.supportFormats!;
+    final VideoQuality currentVideoQa = widget.videoDetailCtr!.currentVideoQa;
 
     /// 总质量分类
-    int totalQaSam = videoFormat.length;
+    final int totalQaSam = videoFormat.length;
 
     /// 可用的质量分类
     int userfulQaSam = 0;
-    List<VideoItem> video = videoInfo.dash!.video!;
-    Set<int> idSet = {};
-    for (var item in video) {
-      int id = item.id!;
-      if (!idSet.contains(id)) {
-        idSet.add(id);
-        userfulQaSam++;
+    if (videoInfo.dash != null) {
+      // dash格式视频一次请求会返回所有可播放的清晰度video
+      final List<VideoItem> video = videoInfo.dash!.video!;
+      final Set<int> idSet = {};
+      for (final VideoItem item in video) {
+        final int id = item.id!;
+        if (!idSet.contains(id)) {
+          idSet.add(id);
+          userfulQaSam++;
+        }
       }
+    }
+
+    if (videoInfo.durl != null) {
+      // durl格式视频一次请求返回对应清晰度video
+      userfulQaSam = videoFormat.length - 1;
     }
 
     showModalBottomSheet(
@@ -347,12 +582,12 @@ class _HeaderControlState extends State<HeaderControl> {
           height: 310,
           clipBehavior: Clip.hardEdge,
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.background,
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: const BorderRadius.all(Radius.circular(12)),
           ),
           margin: const EdgeInsets.all(12),
           child: Column(
-            children: [
+            children: <Widget>[
               SizedBox(
                 height: 45,
                 child: GestureDetector(
@@ -362,7 +597,7 @@ class _HeaderControlState extends State<HeaderControl> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text('选择画质', style: titleStyle),
+                      const Text('选择画质', style: titleStyle),
                       SizedBox(width: buttonSpace),
                       Icon(
                         Icons.info_outline,
@@ -378,7 +613,7 @@ class _HeaderControlState extends State<HeaderControl> {
                   child: Scrollbar(
                     child: ListView(
                       children: [
-                        for (var i = 0; i < totalQaSam; i++) ...[
+                        for (int i = 0; i < totalQaSam; i++) ...[
                           ListTile(
                             onTap: () {
                               if (currentVideoQa.code ==
@@ -425,9 +660,8 @@ class _HeaderControlState extends State<HeaderControl> {
 
   /// 选择音质
   void showSetAudioQa() {
-    AudioQuality currentAudioQa = widget.videoDetailCtr!.currentAudioQa!;
-
-    List<AudioItem> audio = videoInfo.dash!.audio!;
+    final AudioQuality currentAudioQa = widget.videoDetailCtr!.currentAudioQa!;
+    final List<AudioItem> audio = videoInfo.dash!.audio!;
     showModalBottomSheet(
       context: context,
       elevation: 0,
@@ -438,23 +672,25 @@ class _HeaderControlState extends State<HeaderControl> {
           height: 250,
           clipBehavior: Clip.hardEdge,
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.background,
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: const BorderRadius.all(Radius.circular(12)),
           ),
           margin: const EdgeInsets.all(12),
           child: Column(
-            children: [
-              SizedBox(
+            children: <Widget>[
+              const SizedBox(
                   height: 45,
                   child: Center(child: Text('选择音质', style: titleStyle))),
               Expanded(
                 child: Material(
                   child: ListView(
-                    children: [
-                      for (var i in audio) ...[
+                    children: <Widget>[
+                      for (final AudioItem i in audio) ...<Widget>[
                         ListTile(
                           onTap: () {
-                            if (currentAudioQa.code == i.id) return;
+                            if (currentAudioQa.code == i.id) {
+                              return;
+                            }
                             final int quality = i.id!;
                             widget.videoDetailCtr!.currentAudioQa =
                                 AudioQualityCode.fromCode(quality)!;
@@ -491,13 +727,13 @@ class _HeaderControlState extends State<HeaderControl> {
   // 选择解码格式
   void showSetDecodeFormats() {
     // 当前选中的解码格式
-    VideoDecodeFormats currentDecodeFormats =
-        widget.videoDetailCtr!.currentDecodeFormats;
-    VideoItem firstVideo = widget.videoDetailCtr!.firstVideo;
+    final VideoDecodeFormats currentDecodeFormats =
+        widget.videoDetailCtr!.currentDecodeFormats!;
+    final VideoItem firstVideo = widget.videoDetailCtr!.firstVideo;
     // 当前视频可用的解码格式
-    List<FormatItem> videoFormat = videoInfo.supportFormats!;
-    List list = videoFormat
-        .firstWhere((e) => e.quality == firstVideo.quality!.code)
+    final List<FormatItem> videoFormat = videoInfo.supportFormats!;
+    final List list = videoFormat
+        .firstWhere((FormatItem e) => e.quality == firstVideo.quality!.code)
         .codecs!;
 
     showModalBottomSheet(
@@ -510,15 +746,18 @@ class _HeaderControlState extends State<HeaderControl> {
           height: 250,
           clipBehavior: Clip.hardEdge,
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.background,
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: const BorderRadius.all(Radius.circular(12)),
           ),
           margin: const EdgeInsets.all(12),
           child: Column(
             children: [
-              SizedBox(
-                  height: 45,
-                  child: Center(child: Text('选择解码格式', style: titleStyle))),
+              const SizedBox(
+                height: 45,
+                child: Center(
+                  child: Text('选择解码格式', style: titleStyle),
+                ),
+              ),
               Expanded(
                 child: Material(
                   child: ListView(
@@ -563,15 +802,15 @@ class _HeaderControlState extends State<HeaderControl> {
   /// 弹幕功能
   void showSetDanmaku() async {
     // 屏蔽类型
-    List<Map<String, dynamic>> blockTypesList = [
+    final List<Map<String, dynamic>> blockTypesList = [
       {'value': 5, 'label': '顶部'},
       {'value': 2, 'label': '滚动'},
       {'value': 4, 'label': '底部'},
       {'value': 6, 'label': '彩色'},
     ];
-    List blockTypes = widget.controller!.blockTypes;
+    final List blockTypes = widget.controller!.blockTypes;
     // 显示区域
-    List<Map<String, dynamic>> showAreas = [
+    final List<Map<String, dynamic>> showAreas = [
       {'value': 0.25, 'label': '1/4屏'},
       {'value': 0.5, 'label': '半屏'},
       {'value': 0.75, 'label': '3/4屏'},
@@ -583,21 +822,25 @@ class _HeaderControlState extends State<HeaderControl> {
     // 字体大小
     double fontSizeVal = widget.controller!.fontSizeVal;
     // 弹幕速度
-    double danmakuSpeedVal = widget.controller!.danmakuSpeedVal;
+    double danmakuDurationVal = widget.controller!.danmakuDurationVal;
+    // 弹幕描边
+    double strokeWidth = widget.controller!.strokeWidth;
 
-    DanmakuController danmakuController = widget.controller!.danmakuController!;
+    final DanmakuController danmakuController =
+        widget.controller!.danmakuController!;
     await showModalBottomSheet(
       context: context,
       elevation: 0,
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
-        return StatefulBuilder(builder: (context, StateSetter setState) {
+        return StatefulBuilder(
+            builder: (BuildContext context, StateSetter setState) {
           return Container(
             width: double.infinity,
             height: 580,
             clipBehavior: Clip.hardEdge,
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.background,
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: const BorderRadius.all(Radius.circular(12)),
             ),
             margin: const EdgeInsets.all(12),
@@ -606,7 +849,7 @@ class _HeaderControlState extends State<HeaderControl> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(
+                  const SizedBox(
                     height: 45,
                     child: Center(child: Text('弹幕设置', style: titleStyle)),
                   ),
@@ -615,11 +858,13 @@ class _HeaderControlState extends State<HeaderControl> {
                   Padding(
                     padding: const EdgeInsets.only(top: 12, bottom: 18),
                     child: Row(
-                      children: [
-                        for (var i in blockTypesList) ...[
+                      children: <Widget>[
+                        for (final Map<String, dynamic> i
+                            in blockTypesList) ...<Widget>[
                           ActionRowLineItem(
                             onTap: () async {
-                              bool isChoose = blockTypes.contains(i['value']);
+                              final bool isChoose =
+                                  blockTypes.contains(i['value']);
                               if (isChoose) {
                                 blockTypes.remove(i['value']);
                               } else {
@@ -628,9 +873,9 @@ class _HeaderControlState extends State<HeaderControl> {
                               widget.controller!.blockTypes = blockTypes;
                               setState(() {});
                               try {
-                                DanmakuOption currentOption =
+                                final DanmakuOption currentOption =
                                     danmakuController.option;
-                                DanmakuOption updatedOption =
+                                final DanmakuOption updatedOption =
                                     currentOption.copyWith(
                                   hideTop: blockTypes.contains(5),
                                   hideBottom: blockTypes.contains(4),
@@ -653,16 +898,16 @@ class _HeaderControlState extends State<HeaderControl> {
                     padding: const EdgeInsets.only(top: 12, bottom: 18),
                     child: Row(
                       children: [
-                        for (var i in showAreas) ...[
+                        for (final Map<String, dynamic> i in showAreas) ...[
                           ActionRowLineItem(
                             onTap: () {
                               showArea = i['value'];
                               widget.controller!.showArea = showArea;
                               setState(() {});
                               try {
-                                DanmakuOption currentOption =
+                                final DanmakuOption currentOption =
                                     danmakuController.option;
-                                DanmakuOption updatedOption =
+                                final DanmakuOption updatedOption =
                                     currentOption.copyWith(area: i['value']);
                                 danmakuController.updateOption(updatedOption);
                               } catch (_) {}
@@ -703,10 +948,48 @@ class _HeaderControlState extends State<HeaderControl> {
                           widget.controller!.opacityVal = opacityVal;
                           setState(() {});
                           try {
-                            DanmakuOption currentOption =
+                            final DanmakuOption currentOption =
                                 danmakuController.option;
-                            DanmakuOption updatedOption =
+                            final DanmakuOption updatedOption =
                                 currentOption.copyWith(opacity: val);
+                            danmakuController.updateOption(updatedOption);
+                          } catch (_) {}
+                        },
+                      ),
+                    ),
+                  ),
+                  Text('描边粗细 $strokeWidth'),
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      top: 0,
+                      bottom: 6,
+                      left: 10,
+                      right: 10,
+                    ),
+                    child: SliderTheme(
+                      data: SliderThemeData(
+                        trackShape: MSliderTrackShape(),
+                        thumbColor: Theme.of(context).colorScheme.primary,
+                        activeTrackColor: Theme.of(context).colorScheme.primary,
+                        trackHeight: 10,
+                        thumbShape: const RoundSliderThumbShape(
+                            enabledThumbRadius: 6.0),
+                      ),
+                      child: Slider(
+                        min: 0,
+                        max: 3,
+                        value: strokeWidth,
+                        divisions: 6,
+                        label: '$strokeWidth',
+                        onChanged: (double val) {
+                          strokeWidth = val;
+                          widget.controller!.strokeWidth = val;
+                          setState(() {});
+                          try {
+                            final DanmakuOption currentOption =
+                                danmakuController.option;
+                            final DanmakuOption updatedOption =
+                                currentOption.copyWith(strokeWidth: val);
                             danmakuController.updateOption(updatedOption);
                           } catch (_) {}
                         },
@@ -741,9 +1024,9 @@ class _HeaderControlState extends State<HeaderControl> {
                           widget.controller!.fontSizeVal = fontSizeVal;
                           setState(() {});
                           try {
-                            DanmakuOption currentOption =
+                            final DanmakuOption currentOption =
                                 danmakuController.option;
-                            DanmakuOption updatedOption =
+                            final DanmakuOption updatedOption =
                                 currentOption.copyWith(
                               fontSize: (15 * fontSizeVal).toDouble(),
                             );
@@ -753,7 +1036,7 @@ class _HeaderControlState extends State<HeaderControl> {
                       ),
                     ),
                   ),
-                  Text('弹幕时长 ${danmakuSpeedVal.toString()}'),
+                  Text('弹幕时长 ${danmakuDurationVal.toString()} 秒'),
                   Padding(
                     padding: const EdgeInsets.only(
                       top: 0,
@@ -771,20 +1054,21 @@ class _HeaderControlState extends State<HeaderControl> {
                             enabledThumbRadius: 6.0),
                       ),
                       child: Slider(
-                        min: 1,
-                        max: 8,
-                        value: danmakuSpeedVal,
-                        divisions: 14,
-                        label: danmakuSpeedVal.toString(),
+                        min: 2,
+                        max: 16,
+                        value: danmakuDurationVal,
+                        divisions: 28,
+                        label: danmakuDurationVal.toString(),
                         onChanged: (double val) {
-                          danmakuSpeedVal = val;
-                          widget.controller!.danmakuSpeedVal = danmakuSpeedVal;
+                          danmakuDurationVal = val;
+                          widget.controller!.danmakuDurationVal =
+                              danmakuDurationVal;
                           setState(() {});
                           try {
-                            DanmakuOption currentOption =
-                                danmakuController.option;
-                            DanmakuOption updatedOption =
-                                currentOption.copyWith(duration: val);
+                            final DanmakuOption updatedOption =
+                                danmakuController.option.copyWith(
+                                    duration:
+                                        val / widget.controller!.playbackSpeed);
                             danmakuController.updateOption(updatedOption);
                           } catch (_) {}
                         },
@@ -797,7 +1081,9 @@ class _HeaderControlState extends State<HeaderControl> {
           );
         });
       },
-    );
+    ).then((value) {
+      widget.controller!.cacheDanmakuOption();
+    });
   }
 
   /// 播放顺序
@@ -812,20 +1098,23 @@ class _HeaderControlState extends State<HeaderControl> {
           height: 250,
           clipBehavior: Clip.hardEdge,
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.background,
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: const BorderRadius.all(Radius.circular(12)),
           ),
           margin: const EdgeInsets.all(12),
           child: Column(
             children: [
-              SizedBox(
-                  height: 45,
-                  child: Center(child: Text('选择播放顺序', style: titleStyle))),
+              const SizedBox(
+                height: 45,
+                child: Center(
+                  child: Text('选择播放顺序', style: titleStyle),
+                ),
+              ),
               Expanded(
                 child: Material(
                   child: ListView(
-                    children: [
-                      for (var i in PlayRepeat.values) ...[
+                    children: <Widget>[
+                      for (final PlayRepeat i in PlayRepeat.values) ...[
                         ListTile(
                           onTap: () {
                             widget.controller!.setPlayRepeat(i);
@@ -857,10 +1146,12 @@ class _HeaderControlState extends State<HeaderControl> {
   @override
   Widget build(BuildContext context) {
     final _ = widget.controller!;
-    const textStyle = TextStyle(
+    const TextStyle textStyle = TextStyle(
       color: Colors.white,
       fontSize: 12,
     );
+    final bool isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
     return AppBar(
       backgroundColor: Colors.transparent,
       foregroundColor: Colors.white,
@@ -878,23 +1169,68 @@ class _HeaderControlState extends State<HeaderControl> {
               size: 15,
               color: Colors.white,
             ),
-            fuc: () => Get.back(),
-          ),
-          SizedBox(width: buttonSpace),
-          ComBtn(
-            icon: const Icon(
-              FontAwesomeIcons.house,
-              size: 15,
-              color: Colors.white,
-            ),
-            fuc: () async {
-              // 销毁播放器实例
-              await widget.controller!.dispose(type: 'all');
-              if (mounted) {
-                Navigator.popUntil(context, (route) => route.isFirst);
-              }
+            fuc: () => <Set<void>>{
+              if (widget.controller!.isFullScreen.value)
+                <void>{widget.controller!.triggerFullScreen(status: false)}
+              else
+                <void>{
+                  if (MediaQuery.of(context).orientation ==
+                      Orientation.landscape)
+                    {
+                      SystemChrome.setPreferredOrientations([
+                        DeviceOrientation.portraitUp,
+                      ])
+                    },
+                  Get.back()
+                }
             },
           ),
+          SizedBox(width: buttonSpace),
+          if (isFullScreen.value &&
+              isLandscape &&
+              widget.videoType == SearchType.video) ...[
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 200),
+                  child: Obx(
+                    () => Text(
+                      videoIntroController.videoDetail.value.title ?? '',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ),
+                if (videoIntroController.isShowOnlineTotal)
+                  Text(
+                    '${videoIntroController.total.value}人正在看',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                    ),
+                  )
+              ],
+            )
+          ] else ...[
+            ComBtn(
+              icon: const Icon(
+                FontAwesomeIcons.house,
+                size: 15,
+                color: Colors.white,
+              ),
+              fuc: () async {
+                // 销毁播放器实例
+                await widget.controller!.dispose(type: 'all');
+                if (mounted) {
+                  Navigator.popUntil(
+                      context, (Route<dynamic> route) => route.isFirst);
+                }
+              },
+            ),
+          ],
           const Spacer(),
           // ComBtn(
           //   icon: const Icon(
@@ -904,43 +1240,61 @@ class _HeaderControlState extends State<HeaderControl> {
           //   ),
           //   fuc: () => _.screenshot(),
           // ),
-          SizedBox(
-            width: 56,
-            height: 34,
-            child: TextButton(
-              style: ButtonStyle(
-                padding: MaterialStateProperty.all(EdgeInsets.zero),
-              ),
-              onPressed: () => showShootDanmakuSheet(),
-              child: const Text(
-                '发弹幕',
-                style: textStyle,
-              ),
+          ComBtn(
+            icon: const Icon(
+              Icons.cast,
+              size: 19,
+              color: Colors.white,
             ),
+            fuc: () async {
+              showDialog<void>(
+                context: context,
+                builder: (BuildContext context) {
+                  return LiveDlnaPage(
+                      datasource: widget.videoDetailCtr!.videoUrl);
+                },
+              );
+            },
           ),
-          SizedBox(
-            width: 34,
-            height: 34,
-            child: Obx(
-              () => IconButton(
+          if (isFullScreen.value) ...[
+            SizedBox(
+              width: 56,
+              height: 34,
+              child: TextButton(
                 style: ButtonStyle(
                   padding: MaterialStateProperty.all(EdgeInsets.zero),
                 ),
-                onPressed: () {
-                  _.isOpenDanmu.value = !_.isOpenDanmu.value;
-                },
-                icon: Icon(
-                  _.isOpenDanmu.value
-                      ? Icons.subtitles_outlined
-                      : Icons.subtitles_off_outlined,
-                  size: 19,
-                  color: Colors.white,
+                onPressed: () => showShootDanmakuSheet(),
+                child: const Text(
+                  '发弹幕',
+                  style: textStyle,
                 ),
               ),
             ),
-          ),
+            SizedBox(
+              width: 34,
+              height: 34,
+              child: Obx(
+                () => IconButton(
+                  style: ButtonStyle(
+                    padding: MaterialStateProperty.all(EdgeInsets.zero),
+                  ),
+                  onPressed: () {
+                    _.isOpenDanmu.value = !_.isOpenDanmu.value;
+                  },
+                  icon: Icon(
+                    _.isOpenDanmu.value
+                        ? Icons.subtitles_outlined
+                        : Icons.subtitles_off_outlined,
+                    size: 19,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ],
           SizedBox(width: buttonSpace),
-          if (Platform.isAndroid) ...[
+          if (Platform.isAndroid) ...<Widget>[
             SizedBox(
               width: 34,
               height: 34,
@@ -957,7 +1311,7 @@ class _HeaderControlState extends State<HeaderControl> {
                     canUsePiP = false;
                   }
                   if (canUsePiP) {
-                    final aspectRatio = Rational(
+                    final Rational aspectRatio = Rational(
                       widget.videoDetailCtr!.data.dash!.video!.first.width!,
                       widget.videoDetailCtr!.data.dash!.video!.first.height!,
                     );
@@ -973,6 +1327,18 @@ class _HeaderControlState extends State<HeaderControl> {
             ),
             SizedBox(width: buttonSpace),
           ],
+
+          /// 字幕
+          if (widget.showSubtitleBtn ?? true)
+            ComBtn(
+              icon: const Icon(
+                Icons.closed_caption_off,
+                size: 22,
+                color: Colors.white,
+              ),
+              fuc: () => showSubtitleDialog(),
+            ),
+          SizedBox(width: buttonSpace),
           Obx(
             () => SizedBox(
               width: 45,
@@ -983,7 +1349,7 @@ class _HeaderControlState extends State<HeaderControl> {
                 ),
                 onPressed: () => showSetSpeedSheet(),
                 child: Text(
-                  '${_.playbackSpeed.toString()}X',
+                  '${_.playbackSpeed}X',
                   style: textStyle,
                 ),
               ),
@@ -992,8 +1358,8 @@ class _HeaderControlState extends State<HeaderControl> {
           SizedBox(width: buttonSpace),
           ComBtn(
             icon: const Icon(
-              FontAwesomeIcons.sliders,
-              size: 15,
+              Icons.more_vert_outlined,
+              size: 18,
               color: Colors.white,
             ),
             fuc: () => showSettingSheet(),

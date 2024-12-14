@@ -61,7 +61,7 @@ class _BlackListPageState extends State<BlackListPage> {
         centerTitle: false,
         title: Obx(
           () => Text(
-            '黑名单管理 - ${_blackListController.total.value}',
+            '黑名单管理 ${_blackListController.total.value == 0 ? '' : '- ${_blackListController.total.value}'}',
             style: Theme.of(context).textTheme.titleMedium,
           ),
         ),
@@ -70,14 +70,18 @@ class _BlackListPageState extends State<BlackListPage> {
         onRefresh: () async => await _blackListController.queryBlacklist(),
         child: FutureBuilder(
           future: _futureBuilderFuture,
-          builder: (context, snapshot) {
+          builder: (BuildContext context, AsyncSnapshot snapshot) {
             if (snapshot.connectionState == ConnectionState.done) {
               var data = snapshot.data;
               if (data['status']) {
                 List<BlackListItem> list = _blackListController.blackList;
                 return Obx(
-                  () => list.length == 1
-                      ? const SizedBox()
+                  () => list.isEmpty
+                      ? CustomScrollView(
+                          slivers: [
+                            HttpError(errMsg: '你没有拉黑任何人哦～_～', fn: () => {})
+                          ],
+                        )
                       : ListView.builder(
                           controller: scrollController,
                           itemCount: list.length,
@@ -139,7 +143,7 @@ class BlackListController extends GetxController {
   int currentPage = 1;
   int pageSize = 50;
   RxInt total = 0.obs;
-  RxList<BlackListItem> blackList = [BlackListItem()].obs;
+  RxList<BlackListItem> blackList = <BlackListItem>[].obs;
 
   Future queryBlacklist({type = 'init'}) async {
     if (type == 'init') {

@@ -1,76 +1,62 @@
 import 'package:pilipala/http/danmaku.dart';
 import 'package:pilipala/models/danmaku/dm.pb.dart';
-import 'package:pilipala/plugin/pl_player/index.dart';
 
 class PlDanmakuController {
-  PlDanmakuController(this.cid, this.playerController);
+  PlDanmakuController(this.cid, this.type);
   final int cid;
-  final PlPlayerController playerController;
-  late Duration videoDuration;
-  // 按 6min 分段
-  int segCount = 0;
-  List<DmSegMobileReply> dmSegList = [];
+  final String type;
+  Map<int, List<DanmakuElem>> dmSegMap = {};
   // 已请求的段落标记
-  List<int> hasrequestSeg = [];
-  int currentSegIndex = 1;
-  int currentDmIndex = 0;
+  List<bool> requestedSeg = [];
 
-  void calcSegment() {
-    dmSegList.clear();
-    // 视频分段数
-    segCount = (videoDuration.inSeconds / (60 * 6)).ceil();
-    dmSegList = List<DmSegMobileReply>.generate(
-        segCount < 1 ? 1 : segCount, (index) => DmSegMobileReply());
-    // 当前分段
+  bool get initiated => requestedSeg.isNotEmpty;
+
+  static int segmentLength = 60 * 6 * 1000;
+
+  void initiate(int videoDuration, int progress) {
+    if (requestedSeg.isEmpty) {
+      int segCount = (videoDuration / segmentLength).ceil();
+      requestedSeg = List<bool>.generate(segCount, (index) => false);
+    }
     try {
-      currentSegIndex =
-          (playerController.position.value.inSeconds / (60 * 6)).ceil();
-      currentSegIndex = currentSegIndex < 1 ? 1 : currentSegIndex;
-    } catch (_) {}
+      queryDanmaku(calcSegment(progress));
+    } catch (e) {
+      print(e);
+    }
   }
 
-  Future<List<DmSegMobileReply>> queryDanmaku() async {
-    // dmSegList.clear();
-    DmSegMobileReply result =
-        await DanmakaHttp.queryDanmaku(cid: cid, segmentIndex: currentSegIndex);
-    if (result.elems.isNotEmpty) {
-      result.elems.sort((a, b) => (a.progress).compareTo(b.progress));
-      // dmSegList.add(result);
-      currentSegIndex = currentSegIndex < 1 ? 1 : currentSegIndex;
-      dmSegList[currentSegIndex - 1] = result;
-    }
-    if (dmSegList.isNotEmpty) {
-      findClosestPositionIndex(playerController.position.value.inMilliseconds);
-    }
-    return dmSegList;
+  void dispose() {
+    dmSegMap.clear();
+    requestedSeg.clear();
   }
 
-  /// 查询当前最接近的弹幕
-  void findClosestPositionIndex(int position) {
-    int segIndex = (position / (6 * 60 * 1000)).ceil() - 1;
-    if (segIndex < 0) segIndex = 0;
-    List elems = dmSegList[segIndex].elems;
+  int calcSegment(int progress) {
+    return progress ~/ segmentLength;
+  }
 
-    if (segIndex < dmSegList.length) {
-      int left = 0;
-      int right = elems.length;
-
-      while (left < right) {
-        int mid = (right + left) ~/ 2;
-        var midPosition = elems[mid].progress;
-
-        if (midPosition >= position) {
-          right = mid;
-        } else {
-          left = mid + 1;
+  void queryDanmaku(int segmentIndex) async {
+    assert(requestedSeg[segmentIndex] == false);
+    if (requestedSeg.length > segmentIndex) {
+      requestedSeg[segmentIndex] = true;
+      final DmSegMobileReply result = await DanmakaHttp.queryDanmaku(
+          cid: cid, segmentIndex: segmentIndex + 1);
+      if (result.elems.isNotEmpty) {
+        for (var element in result.elems) {
+          int pos = element.progress ~/ 100; //每0.1秒存储一次
+          if (dmSegMap[pos] == null) {
+            dmSegMap[pos] = [];
+          }
+          dmSegMap[pos]!.add(element);
         }
       }
-
-      currentSegIndex = segIndex;
-      currentDmIndex = right;
-    } else {
-      currentSegIndex = segIndex;
-      currentDmIndex = 0;
     }
+  }
+
+  List<DanmakuElem>? getCurrentDanmaku(int progress) {
+    int segmentIndex = calcSegment(progress);
+    if (!requestedSeg[segmentIndex]) {
+      queryDanmaku(segmentIndex);
+    }
+    return dmSegMap[progress ~/ 100];
   }
 }
