@@ -33,15 +33,7 @@ class MineController extends GetxController {
 
   onLogin() async {
     if (!userLogin.value) {
-      Get.toNamed(
-        '/webview',
-        parameters: {
-          'url': 'https://passport.bilibili.com/h5-app/passport/login',
-          'type': 'login',
-          'pageTitle': '登录bilibili',
-        },
-      );
-      // Get.toNamed('/loginPage');
+      Get.toNamed('/loginPage', preventDuplicates: false);
     } else {
       int mid = userInfo.value.mid!;
       String face = userInfo.value.face!;
@@ -65,8 +57,6 @@ class MineController extends GetxController {
       } else {
         resetUserInfo();
       }
-    } else {
-      resetUserInfo();
     }
     await queryUserStatOwner();
     return res;
@@ -119,7 +109,7 @@ class MineController extends GetxController {
       SmartDialog.showToast('账号未登录');
       return;
     }
-    Get.toNamed('/follow?mid=${userInfo.value.mid}');
+    Get.toNamed('/follow?mid=${userInfo.value.mid}', preventDuplicates: false);
   }
 
   pushFans() {
@@ -127,6 +117,15 @@ class MineController extends GetxController {
       SmartDialog.showToast('账号未登录');
       return;
     }
-    Get.toNamed('/fan?mid=${userInfo.value.mid}');
+    Get.toNamed('/fan?mid=${userInfo.value.mid}', preventDuplicates: false);
+  }
+
+  pushDynamic() {
+    if (!userLogin.value) {
+      SmartDialog.showToast('账号未登录');
+      return;
+    }
+    Get.toNamed('/memberDynamics?mid=${userInfo.value.mid}',
+        preventDuplicates: false);
   }
 }

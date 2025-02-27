@@ -64,7 +64,7 @@ class _MinePageState extends State<MinePage> {
             ),
           ),
           IconButton(
-            onPressed: () => Get.toNamed('/setting'),
+            onPressed: () => Get.toNamed('/setting', preventDuplicates: false),
             icon: const Icon(
               CupertinoIcons.slider_horizontal_3,
             ),
@@ -234,7 +234,7 @@ class _MinePageState extends State<MinePage> {
                   childAspectRatio: 1.67,
                   children: <Widget>[
                     InkWell(
-                      onTap: () {},
+                      onTap: () => _mineController.pushDynamic(),
                       borderRadius: StyleString.mdRadius,
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,

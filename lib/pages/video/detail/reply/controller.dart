@@ -1,5 +1,4 @@
 import 'package:easy_debounce/easy_throttle.dart';
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:hive/hive.dart';
 import 'package:pilipala/http/reply.dart';
@@ -15,14 +14,13 @@ class VideoReplyController extends GetxController {
     this.rpid,
     this.replyLevel,
   );
-  final ScrollController scrollController = ScrollController();
   // 视频aid 请求时使用的oid
   int? aid;
   // 层级 2为楼中楼
   String? replyLevel;
   // rpid 请求楼中楼回复
   String? rpid;
-  RxList<ReplyItemModel> replyList = [ReplyItemModel()].obs;
+  RxList<ReplyItemModel> replyList = <ReplyItemModel>[].obs;
   // 当前页
   int currentPage = 0;
   bool isLoadingMore = false;
@@ -37,26 +35,36 @@ class VideoReplyController extends GetxController {
   RxString sortTypeLabel = ReplySortType.time.labels.obs;
 
   Box setting = GStrorage.setting;
+  RxInt replyReqCode = 200.obs;
 
   @override
   void onInit() {
     super.onInit();
     int deaultReplySortIndex =
-        setting.get(SettingBoxKey.replySortType, defaultValue: 0);
+        setting.get(SettingBoxKey.replySortType, defaultValue: 0) as int;
+    if (deaultReplySortIndex == 2) {
+      setting.put(SettingBoxKey.replySortType, 0);
+      deaultReplySortIndex = 0;
+    }
     _sortType = ReplySortType.values[deaultReplySortIndex];
     sortTypeTitle.value = _sortType.titles;
     sortTypeLabel.value = _sortType.labels;
   }
 
   Future queryReplyList({type = 'init'}) async {
+    if (isLoadingMore) {
+      return;
+    }
     isLoadingMore = true;
     if (type == 'init') {
       currentPage = 0;
+      noMore.value = '';
     }
     if (noMore.value == '没有更多了') {
+      isLoadingMore = false;
       return;
     }
-    var res = await ReplyHttp.replyList(
+    final res = await ReplyHttp.replyList(
       oid: aid!,
       pageNum: currentPage + 1,
       ps: ps,
@@ -64,7 +72,7 @@ class VideoReplyController extends GetxController {
       sort: _sortType.index,
     );
     if (res['status']) {
-      List<ReplyItemModel> replies = res['data'].replies;
+      final List<ReplyItemModel> replies = res['data'].replies;
       if (replies.isNotEmpty) {
         noMore.value = '加载中...';
 
@@ -84,9 +92,8 @@ class VideoReplyController extends GetxController {
       if (type == 'init') {
         // 添加置顶回复
         if (res['data'].upper.top != null) {
-          bool flag = res['data']
-              .topReplies
-              .any((reply) => reply.rpid == res['data'].upper.top.rpid);
+          final bool flag = res['data'].topReplies.any((ReplyItemModel reply) =>
+              reply.rpid == res['data'].upper.top.rpid) as bool;
           if (!flag) {
             replies.insert(0, res['data'].upper.top);
           }
@@ -98,6 +105,7 @@ class VideoReplyController extends GetxController {
         replyList.addAll(replies);
       }
     }
+    replyReqCode.value = res['code'];
     isLoadingMore = false;
     return res;
   }
@@ -116,9 +124,6 @@ class VideoReplyController extends GetxController {
           _sortType = ReplySortType.like;
           break;
         case ReplySortType.like:
-          _sortType = ReplySortType.reply;
-          break;
-        case ReplySortType.reply:
           _sortType = ReplySortType.time;
           break;
         default:

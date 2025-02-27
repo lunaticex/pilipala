@@ -1,13 +1,14 @@
 import 'dart:convert';
-
 import 'package:hive/hive.dart';
-import 'package:pilipala/http/index.dart';
-import 'package:pilipala/models/bangumi/info.dart';
-import 'package:pilipala/models/common/search_type.dart';
-import 'package:pilipala/models/search/hot.dart';
-import 'package:pilipala/models/search/result.dart';
-import 'package:pilipala/models/search/suggest.dart';
-import 'package:pilipala/utils/storage.dart';
+import 'package:pilipala/models/search/all.dart';
+import 'package:pilipala/utils/wbi_sign.dart';
+import '../models/bangumi/info.dart';
+import '../models/common/search_type.dart';
+import '../models/search/hot.dart';
+import '../models/search/result.dart';
+import '../models/search/suggest.dart';
+import '../utils/storage.dart';
+import 'index.dart';
 
 class SearchHttp {
   static Box setting = GStrorage.setting;
@@ -37,7 +38,7 @@ class SearchHttp {
 
   // 获取搜索建议
   static Future searchSuggest({required term}) async {
-    var res = await Request().get(Api.serachSuggest,
+    var res = await Request().get(Api.searchSuggest,
         data: {'term': term, 'main_ver': 'v1', 'highlight': term});
     if (res.data is String) {
       Map<String, dynamic> resultMap = json.decode(res.data);
@@ -74,6 +75,7 @@ class SearchHttp {
     required page,
     String? order,
     int? duration,
+    int? tids,
   }) async {
     var reqData = {
       'search_type': searchType.type,
@@ -83,9 +85,14 @@ class SearchHttp {
       'page': page,
       if (order != null) 'order': order,
       if (duration != null) 'duration': duration,
+      if (tids != null && tids != -1) 'tids': tids,
     };
     var res = await Request().get(Api.searchByType, data: reqData);
-    if (res.data['code'] == 0 && res.data['data']['numPages'] > 0) {
+    if (res.data['code'] == 0) {
+      if (res.data['data']['numPages'] == 0) {
+        // 我想返回数据，使得可以通过data.list 取值，结果为[]
+        return {'status': true, 'data': Data()};
+      }
       Object data;
       try {
         switch (searchType) {
@@ -122,32 +129,37 @@ class SearchHttp {
       return {
         'status': false,
         'data': [],
-        'msg': res.data['data'] != null && res.data['data']['numPages'] == 0
-            ? '没有相关数据'
-            : res.data['message'],
+        'msg': res.data['message'],
       };
     }
   }
 
-  static Future ab2c({int? aid, String? bvid}) async {
+  static Future<int> ab2c({int? aid, String? bvid}) async {
     Map<String, dynamic> data = {};
     if (aid != null) {
       data['aid'] = aid;
     } else if (bvid != null) {
       data['bvid'] = bvid;
     }
-    var res = await Request().get(Api.ab2c, data: {...data});
-    return res.data['data'].first['cid'];
+    final dynamic res =
+        await Request().get(Api.ab2c, data: <String, dynamic>{...data});
+    if (res.data['code'] == 0) {
+      return res.data['data'].first['cid'];
+    } else {
+      return -1;
+    }
   }
 
-  static Future bangumiInfo({int? seasonId, int? epId}) async {
-    Map<String, dynamic> data = {};
+  static Future<Map<String, dynamic>> bangumiInfo(
+      {int? seasonId, int? epId}) async {
+    final Map<String, dynamic> data = {};
     if (seasonId != null) {
       data['season_id'] = seasonId;
     } else if (epId != null) {
       data['ep_id'] = epId;
     }
-    var res = await Request().get(Api.bangumiInfo, data: {...data});
+    final dynamic res =
+        await Request().get(Api.bangumiInfo, data: <String, dynamic>{...data});
     if (res.data['code'] == 0) {
       return {
         'status': true,
@@ -161,4 +173,48 @@ class SearchHttp {
       };
     }
   }
+
+  static Future<Map<String, dynamic>> ab2cWithPic(
+      {int? aid, String? bvid}) async {
+    Map<String, dynamic> data = {};
+    if (aid != null) {
+      data['aid'] = aid;
+    } else if (bvid != null) {
+      data['bvid'] = bvid;
+    }
+    final dynamic res =
+        await Request().get(Api.ab2c, data: <String, dynamic>{...data});
+    return {
+      'cid': res.data['data'].first['cid'],
+      'pic': res.data['data'].first['first_frame'],
+    };
+  }
+
+  static Future<Map<String, dynamic>> searchCount(
+      {required String keyword}) async {
+    Map<String, dynamic> data = {
+      'keyword': keyword,
+      'web_location': 333.999,
+    };
+    Map params = await WbiSign().makSign(data);
+    final dynamic res = await Request().get(Api.searchCount, data: params);
+    if (res.data['code'] == 0) {
+      return {
+        'status': true,
+        'data': SearchAllModel.fromJson(res.data['data']),
+      };
+    } else {
+      return {
+        'status': false,
+        'data': [],
+        'msg': '请求错误 🙅',
+      };
+    }
+  }
+}
+
+class Data {
+  List<dynamic> list;
+
+  Data({this.list = const []});
 }

@@ -17,12 +17,15 @@ class _MemberSeasonsPageState extends State<MemberSeasonsPage> {
       Get.put(MemberSeasonsController());
   late Future _futureBuilderFuture;
   late ScrollController scrollController;
+  late String category;
 
   @override
   void initState() {
     super.initState();
-    _futureBuilderFuture =
-        _memberSeasonsController.getSeasonDetail('onRefresh');
+    category = Get.parameters['category']!;
+    _futureBuilderFuture = category == '0'
+        ? _memberSeasonsController.getSeasonDetail('onRefresh')
+        : _memberSeasonsController.getSeriesDetail('onRefresh');
     scrollController = _memberSeasonsController.scrollController;
     scrollController.addListener(
       () {
@@ -41,7 +44,10 @@ class _MemberSeasonsPageState extends State<MemberSeasonsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('他的专栏'),
+        titleSpacing: 0,
+        centerTitle: false,
+        title: Text(Get.parameters['seasonName']!,
+            style: Theme.of(context).textTheme.titleMedium),
       ),
       body: Padding(
         padding: const EdgeInsets.only(

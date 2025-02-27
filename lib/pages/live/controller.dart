@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:hive/hive.dart';
 import 'package:pilipala/http/live.dart';
+import 'package:pilipala/models/live/follow.dart';
 import 'package:pilipala/models/live/item.dart';
 import 'package:pilipala/utils/storage.dart';
 
@@ -10,8 +11,9 @@ class LiveController extends GetxController {
   int count = 12;
   int _currentPage = 1;
   RxInt crossAxisCount = 2.obs;
-  RxList<LiveItemModel> liveList = [LiveItemModel()].obs;
-  bool isLoadingMore = false;
+  RxList<LiveItemModel> liveList = <LiveItemModel>[].obs;
+  RxList<LiveFollowingItemModel> liveFollowingList =
+      <LiveFollowingItemModel>[].obs;
   bool flag = false;
   OverlayEntry? popupDialog;
   Box setting = GStrorage.setting;
@@ -39,13 +41,13 @@ class LiveController extends GetxController {
       }
       _currentPage += 1;
     }
-    isLoadingMore = false;
     return res;
   }
 
   // 下拉刷新
   Future onRefresh() async {
     queryLiveList('init');
+    fetchLiveFollowing();
   }
 
   // 上拉加载
@@ -62,5 +64,18 @@ class LiveController extends GetxController {
       await scrollController.animateTo(0,
           duration: const Duration(milliseconds: 500), curve: Curves.easeInOut);
     }
+  }
+
+  //
+  Future fetchLiveFollowing() async {
+    var res = await LiveHttp.liveFollowing(pn: 1, ps: 20);
+    if (res['status']) {
+      liveFollowingList.value =
+          (res['data'].list as List<LiveFollowingItemModel>)
+              .where((LiveFollowingItemModel item) =>
+                  item.liveStatus == 1 && item.recordLiveTime == 0) // 根据条件过滤
+              .toList();
+    }
+    return res;
   }
 }

@@ -1,18 +1,13 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:easy_debounce/easy_throttle.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:get/get.dart';
 import 'package:pilipala/common/constants.dart';
 import 'package:pilipala/common/skeleton/video_card_v.dart';
-import 'package:pilipala/common/widgets/animated_dialog.dart';
 import 'package:pilipala/common/widgets/http_error.dart';
-import 'package:pilipala/common/widgets/overlay_pop.dart';
 import 'package:pilipala/common/widgets/video_card_v.dart';
-import 'package:pilipala/pages/home/index.dart';
-import 'package:pilipala/pages/main/index.dart';
+import 'package:pilipala/utils/main_stream.dart';
 
 import 'controller.dart';
 
@@ -36,30 +31,17 @@ class _RcmdPageState extends State<RcmdPage>
     super.initState();
     _futureBuilderFuture = _rcmdController.queryRcmdFeed('init');
     ScrollController scrollController = _rcmdController.scrollController;
-    StreamController<bool> mainStream =
-        Get.find<MainController>().bottomBarStream;
-    StreamController<bool> searchBarStream =
-        Get.find<HomeController>().searchBarStream;
     scrollController.addListener(
       () {
         if (scrollController.position.pixels >=
             scrollController.position.maxScrollExtent - 200) {
           EasyThrottle.throttle(
-              'my-throttler', const Duration(milliseconds: 500), () {
+              'my-throttler', const Duration(milliseconds: 200), () {
             _rcmdController.isLoadingMore = true;
             _rcmdController.onLoad();
           });
         }
-
-        final ScrollDirection direction =
-            scrollController.position.userScrollDirection;
-        if (direction == ScrollDirection.forward) {
-          mainStream.add(true);
-          searchBarStream.add(true);
-        } else if (direction == ScrollDirection.reverse) {
-          mainStream.add(false);
-          searchBarStream.add(false);
-        }
+        handleScrollEvent(scrollController);
       },
     );
   }
@@ -98,19 +80,24 @@ class _RcmdPageState extends State<RcmdPage>
                   if (snapshot.connectionState == ConnectionState.done) {
                     Map data = snapshot.data as Map;
                     if (data['status']) {
-                      return Platform.isAndroid || Platform.isIOS
-                          ? Obx(() => contentGrid(
-                              _rcmdController, _rcmdController.videoList))
-                          : SliverLayoutBuilder(
-                              builder: (context, boxConstraints) {
-                              return Obx(() => contentGrid(
-                                  _rcmdController, _rcmdController.videoList));
-                            });
+                      return Obx(
+                        () {
+                          if (_rcmdController.isLoadingMore &&
+                              _rcmdController.videoList.isEmpty) {
+                            return contentGrid(_rcmdController, []);
+                          } else {
+                            // 显示视频列表
+                            return contentGrid(
+                                _rcmdController, _rcmdController.videoList);
+                          }
+                        },
+                      );
                     } else {
                       return HttpError(
                         errMsg: data['msg'],
                         fn: () {
                           setState(() {
+                            _rcmdController.isLoadingMore = true;
                             _futureBuilderFuture =
                                 _rcmdController.queryRcmdFeed('init');
                           });
@@ -118,32 +105,13 @@ class _RcmdPageState extends State<RcmdPage>
                       );
                     }
                   } else {
-                    // 缓存数据
-                    if (_rcmdController.videoList.isNotEmpty) {
-                      return contentGrid(
-                          _rcmdController, _rcmdController.videoList);
-                    }
-                    // 骨架屏
-                    else {
-                      return contentGrid(_rcmdController, []);
-                    }
+                    return contentGrid(_rcmdController, []);
                   }
                 },
               ),
             ),
-            LoadingMore(ctr: _rcmdController)
           ],
         ),
-      ),
-    );
-  }
-
-  OverlayEntry _createPopupDialog(videoItem) {
-    return OverlayEntry(
-      builder: (context) => AnimatedDialog(
-        closeFn: _rcmdController.popupDialog?.remove,
-        child: OverlayPop(
-            videoItem: videoItem, closeFn: _rcmdController.popupDialog?.remove),
       ),
     );
   }
@@ -178,47 +146,11 @@ class _RcmdPageState extends State<RcmdPage>
               ? VideoCardV(
                   videoItem: videoList[index],
                   crossAxisCount: crossAxisCount,
-                  longPress: () {
-                    _rcmdController.popupDialog =
-                        _createPopupDialog(videoList[index]);
-                    Overlay.of(context).insert(_rcmdController.popupDialog!);
-                  },
-                  longPressEnd: () {
-                    _rcmdController.popupDialog?.remove();
-                  },
+                  blockUserCb: (mid) => ctr.blockUserCb(mid),
                 )
               : const VideoCardVSkeleton();
         },
         childCount: videoList!.isNotEmpty ? videoList!.length : 10,
-      ),
-    );
-  }
-}
-
-class LoadingMore extends StatelessWidget {
-  final dynamic ctr;
-  const LoadingMore({super.key, this.ctr});
-
-  @override
-  Widget build(BuildContext context) {
-    return SliverToBoxAdapter(
-      child: Container(
-        height: MediaQuery.of(context).padding.bottom + 80,
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
-        child: GestureDetector(
-          onTap: () {
-            if (ctr != null) {
-              ctr!.onLoad();
-            }
-          },
-          child: Center(
-            child: Text(
-              '加载更多 👇',
-              style: TextStyle(
-                  color: Theme.of(context).colorScheme.outline, fontSize: 13),
-            ),
-          ),
-        ),
       ),
     );
   }

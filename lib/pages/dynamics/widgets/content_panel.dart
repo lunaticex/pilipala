@@ -1,9 +1,10 @@
 // 内容
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:pilipala/common/widgets/badge.dart';
 import 'package:pilipala/common/widgets/network_img_layer.dart';
 import 'package:pilipala/models/dynamics/result.dart';
-import 'package:pilipala/pages/preview/index.dart';
-
+import 'package:pilipala/plugin/pl_gallery/index.dart';
 import 'rich_node_panel.dart';
 
 // ignore: must_be_immutable
@@ -43,31 +44,51 @@ class _ContentState extends State<Content> {
     if (len == 1) {
       OpusPicsModel pictureItem = pics.first;
       picList.add(pictureItem.url!);
-      spanChilds.add(const TextSpan(text: '\n'));
+
+      /// 图片上方的空白间隔
+      // spanChilds.add(const TextSpan(text: '\n'));
       spanChilds.add(
         WidgetSpan(
           child: LayoutBuilder(
             builder: (context, BoxConstraints box) {
-              return GestureDetector(
-                onTap: () {
-                  showDialog(
-                    useSafeArea: false,
-                    context: context,
-                    builder: (context) {
-                      return ImagePreview(initialPage: 0, imgList: picList);
-                    },
-                  );
+              double maxWidth = box.maxWidth.truncateToDouble();
+              double maxHeight = box.maxWidth * 0.6; // 设置最大高度
+              double height = maxWidth *
+                  0.5 *
+                  (pictureItem.height != null && pictureItem.width != null
+                      ? pictureItem.height! / pictureItem.width!
+                      : 1);
+              return Hero(
+                tag: pictureItem.url!,
+                placeholderBuilder:
+                    (BuildContext context, Size heroSize, Widget child) {
+                  return child;
                 },
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: NetworkImgLayer(
-                    src: pictureItem.url,
+                child: GestureDetector(
+                  onTap: () => onPreviewImg(picList, 1, context),
+                  child: Container(
+                    padding: const EdgeInsets.only(top: 4),
+                    constraints: BoxConstraints(maxHeight: maxHeight),
                     width: box.maxWidth / 2,
-                    height: box.maxWidth *
-                        0.5 *
-                        (pictureItem.height != null && pictureItem.width != null
-                            ? pictureItem.height! / pictureItem.width!
-                            : 1),
+                    height: height,
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: NetworkImgLayer(
+                            src: pictureItem.url,
+                            width: maxWidth / 2,
+                            height: height,
+                          ),
+                        ),
+                        height > Get.size.height * 0.9
+                            ? const PBadge(
+                                text: '长图',
+                                right: 8,
+                                bottom: 8,
+                              )
+                            : const SizedBox(),
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -80,23 +101,23 @@ class _ContentState extends State<Content> {
       List<Widget> list = [];
       for (var i = 0; i < len; i++) {
         picList.add(pics[i].url!);
+      }
+      for (var i = 0; i < len; i++) {
         list.add(
           LayoutBuilder(
             builder: (context, BoxConstraints box) {
-              return GestureDetector(
-                onTap: () {
-                  showDialog(
-                    useSafeArea: false,
-                    context: context,
-                    builder: (context) {
-                      return ImagePreview(initialPage: i, imgList: picList);
-                    },
-                  );
-                },
-                child: NetworkImgLayer(
-                  src: pics[i].url,
-                  width: box.maxWidth,
-                  height: box.maxWidth,
+              double maxWidth = box.maxWidth.truncateToDouble();
+              return Hero(
+                tag: picList[i],
+                child: GestureDetector(
+                  onTap: () => onPreviewImg(picList, i, context),
+                  child: NetworkImgLayer(
+                    src: pics[i].url,
+                    width: maxWidth,
+                    height: maxWidth,
+                    origAspectRatio:
+                        pics[i].width!.toInt() / pics[i].height!.toInt(),
+                  ),
                 ),
               );
             },
@@ -107,7 +128,7 @@ class _ContentState extends State<Content> {
         WidgetSpan(
           child: LayoutBuilder(
             builder: (context, BoxConstraints box) {
-              double maxWidth = box.maxWidth;
+              double maxWidth = box.maxWidth.truncateToDouble();
               double crossCount = len < 3 ? 2 : 3;
               double height = maxWidth /
                       crossCount *
@@ -135,6 +156,18 @@ class _ContentState extends State<Content> {
     }
     return TextSpan(
       children: spanChilds,
+    );
+  }
+
+  void onPreviewImg(picList, initIndex, context) {
+    Navigator.of(context).push(
+      HeroDialogRoute<void>(
+        builder: (BuildContext context) => InteractiveviewerGallery(
+          sources: picList,
+          initIndex: initIndex,
+          onPageChanged: (int pageIndex) {},
+        ),
+      ),
     );
   }
 
