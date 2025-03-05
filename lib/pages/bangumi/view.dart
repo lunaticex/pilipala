@@ -2,13 +2,10 @@ import 'dart:async';
 
 import 'package:easy_debounce/easy_throttle.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:get/get.dart';
 import 'package:pilipala/common/constants.dart';
 import 'package:pilipala/common/widgets/http_error.dart';
-import 'package:pilipala/pages/home/index.dart';
-import 'package:pilipala/pages/main/index.dart';
-import 'package:pilipala/pages/rcmd/view.dart';
+import 'package:pilipala/utils/main_stream.dart';
 
 import 'controller.dart';
 import 'widgets/bangumu_card_v.dart';
@@ -34,10 +31,6 @@ class _BangumiPageState extends State<BangumiPage>
   void initState() {
     super.initState();
     scrollController = _bangumidController.scrollController;
-    StreamController<bool> mainStream =
-        Get.find<MainController>().bottomBarStream;
-    StreamController<bool> searchBarStream =
-        Get.find<HomeController>().searchBarStream;
     _futureBuilderFuture = _bangumidController.queryBangumiListFeed();
     _futureBuilderFutureFollow = _bangumidController.queryBangumiFollow();
     scrollController.addListener(
@@ -49,16 +42,7 @@ class _BangumiPageState extends State<BangumiPage>
             _bangumidController.onLoad();
           });
         }
-
-        final ScrollDirection direction =
-            scrollController.position.userScrollDirection;
-        if (direction == ScrollDirection.forward) {
-          mainStream.add(true);
-          searchBarStream.add(true);
-        } else if (direction == ScrollDirection.reverse) {
-          mainStream.add(false);
-          searchBarStream.add(false);
-        }
+        handleScrollEvent(scrollController);
       },
     );
   }
@@ -74,7 +58,7 @@ class _BangumiPageState extends State<BangumiPage>
     super.build(context);
     return RefreshIndicator(
       onRefresh: () async {
-        await _bangumidController.queryBangumiListFeed(type: 'init');
+        await _bangumidController.queryBangumiListFeed();
         return _bangumidController.queryBangumiFollow();
       },
       child: CustomScrollView(
@@ -112,10 +96,12 @@ class _BangumiPageState extends State<BangumiPage>
                       ),
                     ),
                     SizedBox(
-                      height: 258,
+                      height: Get.size.width / 3 / 0.75 +
+                          MediaQuery.textScalerOf(context).scale(50.0),
                       child: FutureBuilder(
                         future: _futureBuilderFutureFollow,
-                        builder: (context, snapshot) {
+                        builder:
+                            (BuildContext context, AsyncSnapshot snapshot) {
                           if (snapshot.connectionState ==
                               ConnectionState.done) {
                             if (snapshot.data == null) {
@@ -132,7 +118,6 @@ class _BangumiPageState extends State<BangumiPage>
                                         itemBuilder: (context, index) {
                                           return Container(
                                             width: Get.size.width / 3,
-                                            height: 254,
                                             margin: EdgeInsets.only(
                                                 left: StyleString.safeSpace,
                                                 right: index ==
@@ -188,7 +173,7 @@ class _BangumiPageState extends State<BangumiPage>
                 StyleString.safeSpace, 0, StyleString.safeSpace, 0),
             sliver: FutureBuilder(
               future: _futureBuilderFuture,
-              builder: (context, snapshot) {
+              builder: (BuildContext context, AsyncSnapshot snapshot) {
                 if (snapshot.connectionState == ConnectionState.done) {
                   Map data = snapshot.data as Map;
                   if (data['status']) {
@@ -197,7 +182,10 @@ class _BangumiPageState extends State<BangumiPage>
                   } else {
                     return HttpError(
                       errMsg: data['msg'],
-                      fn: () => {},
+                      fn: () {
+                        _futureBuilderFuture =
+                            _bangumidController.queryBangumiListFeed();
+                      },
                     );
                   }
                 } else {
@@ -206,7 +194,6 @@ class _BangumiPageState extends State<BangumiPage>
               },
             ),
           ),
-          LoadingMore()
         ],
       ),
     );
@@ -221,8 +208,8 @@ class _BangumiPageState extends State<BangumiPage>
         crossAxisSpacing: StyleString.cardSpace,
         // 列数
         crossAxisCount: 3,
-        mainAxisExtent: Get.size.width / 3 / 0.65 +
-            32 * MediaQuery.of(context).textScaleFactor,
+        mainAxisExtent: Get.size.width / 3 / 0.75 +
+            MediaQuery.textScalerOf(context).scale(42.0),
       ),
       delegate: SliverChildBuilderDelegate(
         (BuildContext context, int index) {

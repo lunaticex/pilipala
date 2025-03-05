@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:pilipala/common/widgets/network_img_layer.dart';
 import 'package:pilipala/models/user/fav_folder.dart';
@@ -25,12 +28,17 @@ class _MediaPageState extends State<MediaPage>
     super.initState();
     mediaController = Get.put(MediaController());
     _futureBuilderFuture = mediaController.queryFavFolder();
-
     mediaController.userLogin.listen((status) {
       setState(() {
         _futureBuilderFuture = mediaController.queryFavFolder();
       });
     });
+  }
+
+  @override
+  void dispose() {
+    mediaController.scrollController.removeListener(() {});
+    super.dispose();
   }
 
   @override
@@ -40,6 +48,7 @@ class _MediaPageState extends State<MediaPage>
     return Scaffold(
       appBar: AppBar(toolbarHeight: 30),
       body: SingleChildScrollView(
+        controller: mediaController.scrollController,
         child: Column(
           children: [
             ListTile(
@@ -77,7 +86,11 @@ class _MediaPageState extends State<MediaPage>
             ],
             Obx(() => mediaController.userLogin.value
                 ? favFolder(mediaController, context)
-                : const SizedBox())
+                : const SizedBox()),
+            SizedBox(
+              height: MediaQuery.of(context).padding.bottom +
+                  kBottomNavigationBarHeight,
+            )
           ],
         ),
       ),
@@ -92,7 +105,7 @@ class _MediaPageState extends State<MediaPage>
           color: Theme.of(context).dividerColor.withOpacity(0.1),
         ),
         ListTile(
-          onTap: () {},
+          onTap: () => Get.toNamed('/fav'),
           leading: null,
           dense: true,
           title: Padding(
@@ -138,7 +151,7 @@ class _MediaPageState extends State<MediaPage>
         // const SizedBox(height: 10),
         SizedBox(
           width: double.infinity,
-          height: 200 * MediaQuery.of(context).textScaleFactor,
+          height: MediaQuery.textScalerOf(context).scale(200),
           child: FutureBuilder(
               future: _futureBuilderFuture,
               builder: (context, snapshot) {
@@ -223,9 +236,11 @@ class FavFolderItem extends StatelessWidget {
     return Container(
       margin: EdgeInsets.only(left: index == 0 ? 20 : 0, right: 14),
       child: GestureDetector(
-        onTap: () => Get.toNamed('/favDetail',
-            arguments: item,
-            parameters: {'mediaId': item!.id.toString(), 'heroTag': heroTag}),
+        onTap: () => Get.toNamed('/favDetail', arguments: item, parameters: {
+          'mediaId': item!.id.toString(),
+          'heroTag': heroTag,
+          'isOwner': '1',
+        }),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.start,
           crossAxisAlignment: CrossAxisAlignment.start,

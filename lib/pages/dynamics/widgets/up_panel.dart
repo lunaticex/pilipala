@@ -1,17 +1,21 @@
+import 'package:easy_debounce/easy_throttle.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:hive/hive.dart';
 import 'package:pilipala/common/widgets/network_img_layer.dart';
 import 'package:pilipala/models/dynamics/up.dart';
 import 'package:pilipala/models/live/item.dart';
-import 'package:pilipala/pages/dynamics/controller.dart';
 import 'package:pilipala/utils/feed_back.dart';
-import 'package:pilipala/utils/storage.dart';
 import 'package:pilipala/utils/utils.dart';
 
 class UpPanel extends StatefulWidget {
-  final FollowUpModel? upData;
-  const UpPanel(this.upData, {Key? key}) : super(key: key);
+  final FollowUpModel upData;
+  final Function? onClickUpCb;
+
+  const UpPanel({
+    super.key,
+    required this.upData,
+    this.onClickUpCb,
+  });
 
   @override
   State<UpPanel> createState() => _UpPanelState();
@@ -24,45 +28,51 @@ class _UpPanelState extends State<UpPanel> {
   List<UpItem> upList = [];
   List<LiveUserItem> liveList = [];
   static const itemPadding = EdgeInsets.symmetric(horizontal: 5, vertical: 0);
-  Box userInfoCache = GStrorage.userInfo;
-  var userInfo;
+  late MyInfo userInfo;
 
-  @override
-  void initState() {
-    super.initState();
-    upList = widget.upData!.upList!;
-    if (widget.upData!.liveUsers != null) {
-      liveList = widget.upData!.liveUsers!.items!;
-    }
-    upList.insert(
-      0,
-      UpItem(
-          face: 'https://files.catbox.moe/8uc48f.png', uname: '全部动态', mid: -1),
-    );
-    userInfo = userInfoCache.get('userInfoCache');
-    upList.insert(
-      1,
-      UpItem(
-        face: userInfo.face,
-        uname: '我',
-        mid: userInfo.mid,
-      ),
-    );
+  void listFormat() {
+    userInfo = widget.upData.myInfo!;
+    upList = widget.upData.upList!;
+    liveList = widget.upData.liveList!;
+  }
+
+  void onClickUp(data, i) {
+    currentMid = data.mid;
+    widget.onClickUpCb?.call(data);
+    // int liveLen = liveList.length;
+    // int upLen = upList.length;
+    // double itemWidth = contentWidth + itemPadding.horizontal;
+    // double screenWidth = MediaQuery.sizeOf(context).width;
+    // double moveDistance = 0.0;
+    // if (itemWidth * (upList.length + liveList.length) <= screenWidth) {
+    // } else if ((upLen - i - 0.5) * itemWidth > screenWidth / 2) {
+    //   moveDistance = (i + liveLen + 0.5) * itemWidth + 46 - screenWidth / 2;
+    // } else {
+    //   moveDistance = (upLen + liveLen) * itemWidth + 46 - screenWidth;
+    // }
+    // data.hasUpdate = false;
+    // scrollController.animateTo(
+    //   moveDistance,
+    //   duration: const Duration(milliseconds: 200),
+    //   curve: Curves.linear,
+    // );
+    // setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
+    listFormat();
     return SliverPersistentHeader(
       floating: true,
       pinned: false,
       delegate: _SliverHeaderDelegate(
-          height: 124,
+          height: liveList.isNotEmpty || upList.isNotEmpty ? 126 : 0,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                color: Theme.of(context).colorScheme.background,
+                color: Theme.of(context).colorScheme.surface,
                 padding: const EdgeInsets.only(left: 16, right: 16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -88,10 +98,10 @@ class _UpPanelState extends State<UpPanel> {
               ),
               Container(
                 height: 90,
-                color: Theme.of(context).colorScheme.background,
+                color: Theme.of(context).colorScheme.surface,
                 child: Row(
                   children: [
-                    Expanded(
+                    Flexible(
                       child: ListView(
                         scrollDirection: Axis.horizontal,
                         controller: scrollController,
@@ -121,6 +131,13 @@ class _UpPanelState extends State<UpPanel> {
                   ],
                 ),
               ),
+              Container(
+                height: 6,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onInverseSurface
+                    .withOpacity(0.5),
+              ),
             ],
           )),
     );
@@ -132,30 +149,10 @@ class _UpPanelState extends State<UpPanel> {
       onTap: () {
         feedBack();
         if (data.type == 'up') {
-          currentMid = data.mid;
-          Get.find<DynamicsController>().mid.value = data.mid;
-          Get.find<DynamicsController>().upInfo.value = data;
-          Get.find<DynamicsController>().onSelectUp(data.mid);
-          int liveLen = liveList.length;
-          int upLen = upList.length;
-          double itemWidth = contentWidth + itemPadding.horizontal;
-          double screenWidth = MediaQuery.of(context).size.width;
-          double moveDistance = 0.0;
-          if (itemWidth * (upList.length + liveList.length) <= screenWidth) {
-          } else if ((upLen - i - 0.5) * itemWidth > screenWidth / 2) {
-            moveDistance =
-                (i + liveLen + 0.5) * itemWidth + 46 - screenWidth / 2;
-          } else {
-            moveDistance = (upLen + liveLen) * itemWidth + 46 - screenWidth;
-          }
-          data.hasUpdate = false;
-          scrollController.animateTo(
-            moveDistance,
-            duration: const Duration(milliseconds: 500),
-            curve: Curves.easeInOut,
-          );
-
-          setState(() {});
+          EasyThrottle.throttle('follow', const Duration(milliseconds: 300),
+              () {
+            onClickUp(data, i);
+          });
         } else if (data.type == 'live') {
           LiveItemModel liveItem = LiveItemModel.fromJson({
             'title': data.title,
@@ -171,6 +168,9 @@ class _UpPanelState extends State<UpPanel> {
       },
       onLongPress: () {
         feedBack();
+        if (data.mid == -1) {
+          return;
+        }
         String heroTag = Utils.makeHeroTag(data.mid);
         Get.toNamed('/member?mid=${data.mid}',
             arguments: {'face': data.face, 'heroTag': heroTag});
@@ -198,12 +198,19 @@ class _UpPanelState extends State<UpPanel> {
                 backgroundColor: data.type == 'live'
                     ? Theme.of(context).colorScheme.secondaryContainer
                     : Theme.of(context).colorScheme.primary,
-                child: NetworkImgLayer(
-                  width: 49,
-                  height: 49,
-                  src: data.face,
-                  type: 'avatar',
-                ),
+                child: data.face != ''
+                    ? NetworkImgLayer(
+                        width: 50,
+                        height: 50,
+                        src: data.face,
+                        type: 'avatar',
+                      )
+                    : const CircleAvatar(
+                        radius: 25,
+                        backgroundImage: AssetImage(
+                          'assets/images/noface.jpeg',
+                        ),
+                      ),
               ),
               Padding(
                 padding: const EdgeInsets.only(top: 4),
@@ -271,13 +278,11 @@ class UpPanelSkeleton extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                width: 49,
-                height: 49,
+                width: 50,
+                height: 50,
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.onInverseSurface,
-                  borderRadius: const BorderRadius.all(
-                    Radius.circular(24),
-                  ),
+                  borderRadius: BorderRadius.circular(50),
                 ),
               ),
               Container(

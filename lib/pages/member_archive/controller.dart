@@ -9,12 +9,14 @@ class MemberArchiveController extends GetxController {
   int pn = 1;
   int count = 0;
   RxMap<String, String> currentOrder = <String, String>{}.obs;
-  List<Map<String, String>> orderList = [
+  RxList<Map<String, String>> orderList = [
     {'type': 'pubdate', 'label': '最新发布'},
     {'type': 'click', 'label': '最多播放'},
     {'type': 'stow', 'label': '最多收藏'},
-  ];
+    {'type': 'charge', 'label': '充电专属'},
+  ].obs;
   RxList<VListItemModel> archivesList = <VListItemModel>[].obs;
+  RxBool isLoading = false.obs;
 
   @override
   void onInit() {
@@ -25,8 +27,13 @@ class MemberArchiveController extends GetxController {
 
   // 获取用户投稿
   Future getMemberArchive(type) async {
-    if (type == 'onRefresh') {
+    if (isLoading.value) {
+      return;
+    }
+    isLoading.value = true;
+    if (type == 'init') {
       pn = 1;
+      archivesList.clear();
     }
     var res = await MemberHttp.memberArchive(
       mid: mid,
@@ -34,21 +41,28 @@ class MemberArchiveController extends GetxController {
       order: currentOrder['type']!,
     );
     if (res['status']) {
-      archivesList.addAll(res['data'].list.vlist);
+      if (type == 'init') {
+        archivesList.value = res['data'].list.vlist;
+      }
+      if (type == 'onLoad') {
+        archivesList.addAll(res['data'].list.vlist);
+      }
       count = res['data'].page['count'];
       pn += 1;
     }
+    isLoading.value = false;
     return res;
   }
 
   toggleSort() async {
-    pn = 1;
-    int index = orderList.indexOf(currentOrder);
+    List<String> typeList = orderList.map((e) => e['type']!).toList();
+    int index = typeList.indexOf(currentOrder['type']!);
     if (index == orderList.length - 1) {
       currentOrder.value = orderList.first;
     } else {
       currentOrder.value = orderList[index + 1];
     }
+    getMemberArchive('init');
   }
 
   // 上拉加载

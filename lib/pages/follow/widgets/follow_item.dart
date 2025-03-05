@@ -1,3 +1,4 @@
+import 'package:bottom_sheet/bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:pilipala/common/widgets/network_img_layer.dart';
@@ -42,14 +43,29 @@ class FollowItem extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
       ),
       dense: true,
-      trailing: ctr!.isOwner.value
+      trailing: ctr != null && ctr!.isOwner.value
           ? SizedBox(
               height: 34,
               child: TextButton(
                 onPressed: () async {
-                  await Get.bottomSheet(
-                    GroupPanel(mid: item.mid!),
-                    isScrollControlled: true,
+                  await showFlexibleBottomSheet(
+                    bottomSheetBorderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
+                    ),
+                    minHeight: 1,
+                    initHeight: 1,
+                    maxHeight: 1,
+                    context: Get.context!,
+                    builder: (BuildContext context,
+                        ScrollController scrollController, double offset) {
+                      return GroupPanel(
+                        mid: item.mid!,
+                        scrollController: scrollController,
+                      );
+                    },
+                    anchors: [1],
+                    isSafeArea: true,
                   );
                 },
                 style: TextButton.styleFrom(

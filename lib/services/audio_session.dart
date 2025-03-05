@@ -18,13 +18,17 @@ class AudioSessionHandler {
     session.configure(const AudioSessionConfiguration.music());
 
     session.interruptionEventStream.listen((event) {
-      final player = PlPlayerController.getInstance();
+      final player = PlPlayerController(videoType: 'none');
       if (event.begin) {
+        if (!player.playerStatus.playing) return;
         switch (event.type) {
           case AudioInterruptionType.duck:
             player.setVolume(player.volume.value * 0.5);
             break;
           case AudioInterruptionType.pause:
+            player.pause(isInterrupt: true);
+            _playInterrupted = true;
+            break;
           case AudioInterruptionType.unknown:
             player.pause(isInterrupt: true);
             _playInterrupted = true;
@@ -36,7 +40,7 @@ class AudioSessionHandler {
             player.setVolume(player.volume.value * 2);
             break;
           case AudioInterruptionType.pause:
-            if (_playInterrupted) PlPlayerController.getInstance().play();
+            if (_playInterrupted) player.play();
             break;
           case AudioInterruptionType.unknown:
             break;
@@ -47,7 +51,10 @@ class AudioSessionHandler {
 
     // 耳机拔出暂停
     session.becomingNoisyEventStream.listen((_) {
-      PlPlayerController.getInstance().pause();
+      final player = PlPlayerController(videoType: 'none');
+      if (player.playerStatus.playing) {
+        player.pause();
+      }
     });
   }
 }

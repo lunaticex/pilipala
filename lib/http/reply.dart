@@ -1,6 +1,7 @@
-import 'package:pilipala/http/api.dart';
-import 'package:pilipala/http/init.dart';
-import 'package:pilipala/models/video/reply/data.dart';
+import '../models/video/reply/data.dart';
+import '../models/video/reply/emote.dart';
+import 'api.dart';
+import 'init.dart';
 
 class ReplyHttp {
   static Future replyList({
@@ -21,19 +22,14 @@ class ReplyHttp {
       return {
         'status': true,
         'data': ReplyData.fromJson(res.data['data']),
+        'code': 200,
       };
     } else {
-      Map errMap = {
-        -400: '请求错误',
-        -404: '无此项',
-        12002: '当前页面评论功能已关闭',
-        12009: '评论主体的type不合法',
-        12061: 'UP主已关闭评论区',
-      };
       return {
         'status': false,
         'date': [],
-        'msg': errMap[res.data['code']] ?? res.data['message'],
+        'code': res.data['code'],
+        'msg': res.data['message'],
       };
     }
   }
@@ -82,7 +78,7 @@ class ReplyHttp {
   }) async {
     var res = await Request().post(
       Api.likeReply,
-      queryParameters: {
+      data: {
         'type': type,
         'oid': oid,
         'rpid': rpid,
@@ -98,6 +94,46 @@ class ReplyHttp {
         'date': [],
         'msg': res.data['message'],
       };
+    }
+  }
+
+  static Future getEmoteList({String? business}) async {
+    var res = await Request().get(Api.emojiList, data: {
+      'business': business ?? 'reply',
+      'web_location': '333.1245',
+    });
+    if (res.data['code'] == 0) {
+      return {
+        'status': true,
+        'data': EmoteModelData.fromJson(res.data['data']),
+      };
+    } else {
+      return {
+        'status': false,
+        'date': [],
+        'msg': res.data['message'],
+      };
+    }
+  }
+
+  static Future replyDel({
+    required int type, //replyType
+    required int oid,
+    required int rpid,
+  }) async {
+    var res = await Request().post(
+      Api.replyDel,
+      queryParameters: {
+        'type': type, //type.index
+        'oid': oid,
+        'rpid': rpid,
+        'csrf': await Request.getCsrf(),
+      },
+    );
+    if (res.data['code'] == 0) {
+      return {'status': true, 'msg': '删除成功'};
+    } else {
+      return {'status': false, 'msg': res.data['message']};
     }
   }
 }

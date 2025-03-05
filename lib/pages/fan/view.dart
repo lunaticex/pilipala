@@ -54,7 +54,7 @@ class _FansPageState extends State<FansPage> {
         centerTitle: false,
         titleSpacing: 0,
         title: Text(
-          '${_fansController.name}的粉丝',
+          _fansController.isOwner.value ? '我的粉丝' : '${_fansController.name}的粉丝',
           style: Theme.of(context).textTheme.titleMedium,
         ),
       ),
@@ -103,9 +103,17 @@ class _FansPageState extends State<FansPage> {
                         ),
                 );
               } else {
-                return HttpError(
-                  errMsg: data['msg'],
-                  fn: () => _fansController.queryFans('init'),
+                return CustomScrollView(
+                  physics: const NeverScrollableScrollPhysics(),
+                  slivers: [
+                    HttpError(
+                      errMsg: data['msg'],
+                      fn: () {
+                        _futureBuilderFuture =
+                            _fansController.queryFans('init');
+                      },
+                    )
+                  ],
                 );
               }
             } else {

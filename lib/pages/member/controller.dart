@@ -8,6 +8,7 @@ import 'package:pilipala/http/video.dart';
 import 'package:pilipala/models/member/archive.dart';
 import 'package:pilipala/models/member/coin.dart';
 import 'package:pilipala/models/member/info.dart';
+import 'package:pilipala/models/member/like.dart';
 import 'package:pilipala/utils/storage.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -20,11 +21,13 @@ class MemberController extends GetxController {
   Box userInfoCache = GStrorage.userInfo;
   late int ownerMid;
   // 投稿列表
-  RxList<VListItemModel>? archiveList = [VListItemModel()].obs;
+  RxList<VListItemModel>? archiveList = <VListItemModel>[].obs;
   dynamic userInfo;
   RxInt attribute = (-1).obs;
   RxString attributeText = '关注'.obs;
   RxList<MemberCoinsDataModel> recentCoinsList = <MemberCoinsDataModel>[].obs;
+  RxList<MemberLikeDataModel> recentLikeList = <MemberLikeDataModel>[].obs;
+  RxBool isOwner = false.obs;
 
   @override
   void onInit() {
@@ -32,6 +35,7 @@ class MemberController extends GetxController {
     mid = int.parse(Get.parameters['mid']!);
     userInfo = userInfoCache.get('userInfoCache');
     ownerMid = userInfo != null ? userInfo.mid : -1;
+    isOwner.value = mid == ownerMid;
     face.value = Get.arguments['face'] ?? '';
     heroTag = Get.arguments['heroTag'] ?? '';
     relationSearch();
@@ -116,16 +120,28 @@ class MemberController extends GetxController {
   Future relationSearch() async {
     if (userInfo == null) return;
     if (mid == ownerMid) return;
-    var res = await UserHttp.relationSearch(mid);
+    var res = await UserHttp.hasFollow(mid);
     if (res['status']) {
-      attribute.value = res['data']['relation']['attribute'];
-      attributeText.value = attribute.value == 0
-          ? '关注'
-          : attribute.value == 2
-              ? '已关注'
-              : attribute.value == 6
-                  ? '已互粉'
-                  : '已拉黑';
+      attribute.value = res['data']['attribute'];
+      switch (attribute.value) {
+        case 1:
+          attributeText.value = '悄悄关注';
+          break;
+        case 2:
+          attributeText.value = '已关注';
+          break;
+        case 6:
+          attributeText.value = '已互关';
+          break;
+        case 128:
+          attributeText.value = '已拉黑';
+          break;
+        default:
+          attributeText.value = '关注';
+      }
+      if (res['data']['special'] == 1) {
+        attributeText.value += 'SP';
+      }
     }
   }
 
@@ -178,12 +194,18 @@ class MemberController extends GetxController {
     Share.share('${memberInfo.value.name} - https://space.bilibili.com/$mid');
   }
 
-  // 请求专栏
+  // 请求合集
   Future getMemberSeasons() async {
     if (userInfo == null) return;
     var res = await MemberHttp.getMemberSeasons(mid, 1, 10);
     if (!res['status']) {
-      SmartDialog.showToast("用户专栏请求异常：${res['msg']}");
+      SmartDialog.showToast("用户合集请求异常：${res['msg']}");
+    } else {
+      // 只取前四个专栏
+      res['data'].seasonsList.map((e) {
+        e.archives =
+            e.archives!.length > 4 ? e.archives!.sublist(0, 4) : e.archives!;
+      }).toList();
     }
     return res;
   }
@@ -193,6 +215,14 @@ class MemberController extends GetxController {
     if (userInfo == null) return;
     var res = await MemberHttp.getRecentCoinVideo(mid: mid);
     recentCoinsList.value = res['data'];
+    return res;
+  }
+
+  // 请求点赞视频
+  Future getRecentLikeVideo() async {
+    if (userInfo == null) return;
+    var res = await MemberHttp.getRecentLikeVideo(mid: mid);
+    recentLikeList.value = res['data'];
     return res;
   }
 
@@ -208,4 +238,8 @@ class MemberController extends GetxController {
   void pushRecentCoinsPage() async {
     if (recentCoinsList.isNotEmpty) {}
   }
+
+  void pushfavPage() => Get.toNamed('/fav?mid=$mid');
+  // 跳转图文专栏
+  void pushArticlePage() => Get.toNamed('/memberArticle?mid=$mid');
 }

@@ -1,5 +1,5 @@
-import 'package:pilipala/http/index.dart';
-import 'package:pilipala/models/user/black.dart';
+import '../models/user/black.dart';
+import 'index.dart';
 
 class BlackHttp {
   static Future blackList({required int pn, int? ps}) async {
@@ -28,7 +28,7 @@ class BlackHttp {
   static Future removeBlack({required int fid}) async {
     var res = await Request().post(
       Api.removeBlack,
-      queryParameters: {
+      data: {
         'act': 6,
         'csrf': await Request.getCsrf(),
         'fid': fid,

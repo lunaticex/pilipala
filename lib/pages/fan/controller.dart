@@ -10,11 +10,12 @@ class FansController extends GetxController {
   int pn = 1;
   int ps = 20;
   int total = 0;
-  RxList<FansItemModel> fansList = [FansItemModel()].obs;
+  RxList<FansItemModel> fansList = <FansItemModel>[].obs;
   late int mid;
   late String name;
   var userInfo;
   RxString loadingText = '加载中...'.obs;
+  RxBool isOwner = false.obs;
 
   @override
   void onInit() {
@@ -23,6 +24,7 @@ class FansController extends GetxController {
     mid = Get.parameters['mid'] != null
         ? int.parse(Get.parameters['mid']!)
         : userInfo.mid;
+    isOwner.value = mid == userInfo.mid;
     name = Get.parameters['name'] ?? userInfo.uname;
   }
 
@@ -47,7 +49,6 @@ class FansController extends GetxController {
       } else if (type == 'onLoad') {
         fansList.addAll(res['data'].list);
       }
-      print(total);
       if ((pn == 1 && total < ps) || res['data'].list.isEmpty) {
         loadingText.value = '没有更多了';
       }
